@@ -10,7 +10,8 @@ SeatNav backend
        GET  /api/seats/{seat_id}/usage       % of time free / occupied / away (?hours=...)
        GET  /api/health                      quick "is the server up" check
        WS   /ws                              live updates pushed the moment a seat changes
-       GET  /                                test dashboard
+       GET  /                                live 3D floor map (static/index.html; add ?demo for made-up data)
+       GET  /static/...                      the map's scripts, the floor layout, and the old card dashboard (cards.html)
        GET  /docs                            interactive API docs (try every endpoint in the browser)
 
 Run locally:
@@ -33,6 +34,7 @@ from pathlib import Path
 from fastapi import FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from store import VALID_STATES, Store
@@ -133,6 +135,10 @@ async def report(r: Report, x_device_key: str | None = Header(default=None)):
 @app.get("/")
 def dashboard():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+# The map's scripts and floor layout live next to index.html.
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.get("/api/health")

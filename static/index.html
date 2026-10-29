@@ -2,236 +2,329 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SeatNav</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SeatNav · Feldberg</title>
+<meta name="description" content="Live map of free study carrels in Feldberg Library">
+<meta name="theme-color" content="#eef0ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1311" media="(prefers-color-scheme: dark)">
+<!-- three.js for the 3D map (floor.js), pinned to one version on the jsDelivr CDN -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+  }
+}
+</script>
 <style>
+  /* Colours live here as tokens; floor.js reads the --scene-* and state ones for the 3D view.
+     State colours are tuned so free and occupied also differ in lightness, for colour-blind users;
+     every state also has its own icon and its own furniture in the map. */
   :root {
     color-scheme: light;
-    --bg: #f3f5f2;
+    --bg: #eef0ec;
     --surface: #ffffff;
-    --text: #1c231f;
-    --muted: #5d6862;
+    --text: #18201b;
+    --muted: #59645e;
     --line: #d9dfda;
     --brand: #00693e;
-    --free: #2e7d4f;
-    --occupied: #a23b2a;
-    --away: #b7801a;
+    --on-brand: #ffffff;
+    --free: #16a35f;
+    --occupied: #c8322b;
+    --away: #e9a514;
     --offline: #8a918d;
-    --tint-free: #e4f1e8;
-    --tint-occupied: #f6e4e0;
-    --tint-away: #f7eedb;
-    --tint-offline: #eceeed;
+    --inactive: #c3c8c5;
+    --ink-free: #04170b;
+    --ink-occupied: #ffffff;
+    --ink-away: #221800;
+    --ink-offline: #0b0e0c;
+    --ink-inactive: #2a312d;
+    --scene-bg: #e3e7e2;
+    --scene-floor: #f7f5f1;
+    --scene-carpet: #5b6266;
+    --scene-wall: #fdfdfb;
+    --scene-wall-top: #2c332f;
+    --scene-ghost: #cdd2cf;
+    --shadow: 0 6px 24px rgba(20, 30, 25, 0.16);
   }
   @media (prefers-color-scheme: dark) {
     :root {
       color-scheme: dark;
-      --bg: #121614;
+      --bg: #0f1311;
       --surface: #1a201c;
-      --text: #e5eae6;
-      --muted: #9aa69f;
+      --text: #e7ece8;
+      --muted: #9ba69f;
       --line: #2c3530;
       --brand: #4fb386;
-      --free: #5cbf85;
-      --occupied: #e2735f;
-      --away: #e0ac48;
+      --on-brand: #06150d;
+      --free: #43d68a;
+      --occupied: #ff5d4f;
+      --away: #ffc23d;
       --offline: #7d8682;
-      --tint-free: #1c2f23;
-      --tint-occupied: #35201b;
-      --tint-away: #332a17;
-      --tint-offline: #222826;
+      --inactive: #4a514d;
+      --ink-free: #04170b;
+      --ink-occupied: #1f0705;
+      --ink-away: #221800;
+      --ink-offline: #0b0e0c;
+      --ink-inactive: #e7ece8;
+      --scene-bg: #0b0f0d;
+      --scene-floor: #2a302d;
+      --scene-carpet: #1b1f21;
+      --scene-wall: #3c443f;
+      --scene-wall-top: #a9b4ae;
+      --scene-ghost: #3b423e;
+      --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
     }
   }
 
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
     margin: 0;
+    overflow: hidden;
     background: var(--bg);
     color: var(--text);
-    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
   }
-  main { max-width: 960px; margin: 0 auto; padding: 40px 20px 64px; }
+  button { font: inherit; color: inherit; cursor: pointer; }
 
-  header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
-  .brand { font-weight: 600; color: var(--brand); margin: 0; font-size: 1rem; }
-  .conn { font-size: 0.875rem; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  /* ---------- 3D map ---------- */
+  .scene { position: fixed; inset: 0; }
+  .scene canvas { display: block; }
+  .labels { position: absolute; top: 0; left: 0; pointer-events: none; }
+  .room-label {
+    max-width: 120px;
+    text-align: center;
+    font: 600 10px/1.2 system-ui, sans-serif;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .entrance-label, .zone-tag {
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: var(--surface);
+    font: 700 12px/1 system-ui, sans-serif;
+    white-space: nowrap;
+  }
+  .entrance-label { color: var(--brand); box-shadow: var(--shadow); }
+  .zone-tag { color: var(--muted); border: 1px dashed var(--muted); font-weight: 600; }
+  .pin {
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px 9px 3px 5px;
+    border: 2px solid var(--surface);
+    border-radius: 999px;
+    background: var(--c);
+    color: var(--ink);
+    font: 700 13px/1 system-ui, sans-serif;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+  .pin svg { width: 15px; height: 15px; }
+  .pin.selected { outline: 3px solid var(--text); outline-offset: 1px; }
+
+  /* ---------- state colours, shared by pins, badges, list rows and the usage bar ---------- */
+  [data-state="FREE"] { --c: var(--free); --ink: var(--ink-free); }
+  [data-state="OCCUPIED"] { --c: var(--occupied); --ink: var(--ink-occupied); }
+  [data-state="AWAY"] { --c: var(--away); --ink: var(--ink-away); }
+  [data-state="OFFLINE"] { --c: var(--offline); --ink: var(--ink-offline); }
+  [data-state="INACTIVE"] { --c: var(--inactive); --ink: var(--ink-inactive); }
+  .badge {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--c);
+    color: var(--ink);
+  }
+  .badge svg { width: 62%; height: 62%; }
+
+  /* ---------- header ---------- */
+  .top {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 2;
+    padding: calc(12px + env(safe-area-inset-top)) 16px 28px;
+    background: linear-gradient(var(--bg) 62%, transparent);
+    pointer-events: none;
+  }
+  .top-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .brand { margin: 0; font-size: 15px; font-weight: 700; color: var(--brand); }
+  .where { margin-left: 6px; font-weight: 500; color: var(--muted); }
+  .conn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
   .conn::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--offline); }
   .conn.ok::before { background: var(--free); }
+  .hero { margin: 10px 0 0; font-size: 34px; line-height: 1.1; letter-spacing: -0.01em; }
+  .hero b { color: var(--free); font-weight: 750; }
+  .tally { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
 
-  .hero {
-    font-family: Charter, "Bitstream Charter", "Iowan Old Style", Georgia, serif;
-    font-size: clamp(2.25rem, 6vw, 3.75rem);
-    line-height: 1.1;
-    font-weight: 400;
-    margin: 32px 0 8px;
+  /* ---------- list (also the fallback without WebGL) ---------- */
+  .list {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    overflow-y: auto;
+    padding: calc(140px + env(safe-area-inset-top)) 16px calc(130px + env(safe-area-inset-bottom));
+    background: var(--bg);
   }
-  .hero b { font-weight: 700; color: var(--free); }
-  .tally { color: var(--muted); margin: 0 0 36px; }
-
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
-
-  /* each tile is drawn like a carrel: a desk with a partition along the top */
-  .seat {
-    background: var(--surface);
+  .list-open .list { display: block; }
+  .list ul { list-style: none; display: grid; gap: 8px; max-width: 520px; margin: 0 auto; padding: 0; }
+  .list > p { max-width: 520px; margin: 14px auto 0; }
+  .row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
     border: 1px solid var(--line);
-    border-top: 6px solid var(--state);
-    border-radius: 4px 4px 10px 10px;
-    padding: 14px 16px 16px;
+    border-left: 5px solid var(--c);
+    border-radius: 12px;
+    background: var(--surface);
+    text-align: left;
   }
-  .seat h2 { margin: 0; font-size: 0.95rem; font-weight: 600; }
-  .seat .state {
-    display: inline-block;
+  .row-main { flex: 1; min-width: 0; display: grid; }
+  .row-sub { font-size: 13px; color: var(--muted); }
+  .row-state { font-size: 14px; font-weight: 600; }
+  .note { padding: 10px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); }
+
+  /* ---------- seat detail sheet ---------- */
+  .sheet {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: calc(112px + env(safe-area-inset-bottom));
+    z-index: 4;
+    max-width: 520px;
+    max-height: 52vh;
+    margin: 0 auto;
+    overflow-y: auto;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+  .sheet-head { display: flex; justify-content: space-between; align-items: center; }
+  .sheet h2 { margin: 0; font-size: 22px; }
+  .sheet h3 { margin: 18px 0 8px; font-size: 14px; }
+  .icon-btn { width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 50%; background: transparent; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     margin: 10px 0 4px;
-    padding: 2px 10px;
+    padding: 4px 12px 4px 6px;
     border-radius: 999px;
-    background: var(--tint);
-    color: var(--state);
-    font-weight: 600;
-    font-size: 0.95rem;
+    background: var(--c);
+    color: var(--ink);
+    font-weight: 700;
   }
-  .seat .since, .seat .meta { margin: 0; font-size: 0.85rem; color: var(--muted); }
-  .seat .meta { margin-top: 8px; }
+  .chip svg { width: 18px; height: 18px; }
+  .bar { display: flex; height: 12px; margin-bottom: 6px; overflow: hidden; border-radius: 6px; background: var(--line); }
+  .bar span { background: var(--c); }
+  .changes { list-style: none; display: grid; gap: 6px; margin: 0; padding: 0; }
+  .changes li { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+  .changes time { width: 46px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .changes .badge { width: 20px; height: 20px; }
+  .muted { margin: 0; font-size: 14px; color: var(--muted); }
 
-  .seat[data-state="FREE"]     { --state: var(--free);     --tint: var(--tint-free); }
-  .seat[data-state="OCCUPIED"] { --state: var(--occupied); --tint: var(--tint-occupied); }
-  .seat[data-state="AWAY"]     { --state: var(--away);     --tint: var(--tint-away); }
-  .seat[data-state="OFFLINE"]  { --state: var(--offline);  --tint: var(--tint-offline); }
+  /* ---------- bottom bar ---------- */
+  .bottom {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 3;
+    padding: 18px 12px calc(12px + env(safe-area-inset-bottom));
+    background: linear-gradient(transparent, var(--bg) 38%);
+  }
+  .legend {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 12px;
+    margin: 0 0 8px;
+    padding: 0;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .legend li { display: inline-flex; align-items: center; gap: 5px; }
+  .legend .badge { width: 18px; height: 18px; }
+  .views {
+    display: flex;
+    gap: 4px;
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+  .views button {
+    flex: 1;
+    min-height: 40px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .views button[aria-pressed="true"] { background: var(--brand); color: var(--on-brand); }
+  .no-3d .views [data-view] { display: none; }
 
-  .seat.flash { animation: flash 1.2s ease-out; }
-  @keyframes flash { from { box-shadow: 0 0 0 4px var(--tint); } to { box-shadow: 0 0 0 0 transparent; } }
-  @media (prefers-reduced-motion: reduce) { .seat.flash { animation: none; } }
-
-  .empty { color: var(--muted); max-width: 60ch; }
-  .empty code { background: var(--surface); border: 1px solid var(--line); padding: 1px 6px; border-radius: 4px; }
-  footer { margin-top: 40px; font-size: 0.85rem; color: var(--muted); }
-  footer a { color: var(--brand); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <p class="brand">SeatNav</p>
-    <span class="conn" id="conn">Connecting…</span>
-  </header>
+<div id="scene" class="scene" aria-hidden="true"></div>
 
-  <h1 class="hero" id="hero">Loading seats…</h1>
-  <p class="tally" id="tally"></p>
+<header class="top">
+  <div class="top-row">
+    <p class="brand">SeatNav <span id="floorName" class="where">Feldberg</span></p>
+    <span id="conn" class="conn">Connecting…</span>
+  </div>
+  <p class="hero"><b id="freeCount">–</b> <span id="freeText">carrels free</span></p>
+  <p id="tally" class="tally"></p>
+</header>
 
-  <section class="grid" id="grid" aria-live="polite"></section>
+<section id="list" class="list" aria-label="Carrels">
+  <p id="fallbackNote" class="note" hidden>The 3D map can't run on this device, so here's the list instead.</p>
+  <ul id="listItems"></ul>
+  <p id="listNote" class="muted"></p>
+</section>
 
-  <footer>Updates live as sensors report. API docs at <a href="/docs">/docs</a>.</footer>
-</main>
+<section id="sheet" class="sheet" hidden aria-labelledby="sheetTitle">
+  <div class="sheet-head">
+    <h2 id="sheetTitle"></h2>
+    <button id="sheetClose" class="icon-btn" type="button" aria-label="Close">✕</button>
+  </div>
+  <p id="sheetState" class="chip"></p>
+  <p id="sheetSince" class="muted"></p>
+  <div id="sheetBody"></div>
+</section>
 
-<script>
-  const seats = new Map();
-  let clockOffset = 0;   // server time minus browser time, in seconds
+<footer class="bottom">
+  <ul id="legend" class="legend" aria-label="Legend"></ul>
+  <nav class="views" aria-label="Map views">
+    <button type="button" data-view="carrels" aria-pressed="true">Carrels</button>
+    <button type="button" data-view="floor" aria-pressed="false">Whole floor</button>
+    <button type="button" data-view="top" aria-pressed="false">Top-down</button>
+    <button type="button" id="listBtn" aria-pressed="false">List</button>
+  </nav>
+</footer>
 
-  const LABEL = { FREE: "Free", OCCUPIED: "Occupied", AWAY: "Away", OFFLINE: "Sensor offline" };
+<p id="announce" class="sr-only" aria-live="polite"></p>
 
-  function serverNow() { return Date.now() / 1000 + clockOffset; }
-
-  function duration(seconds) {
-    if (seconds == null || seconds < 0) return "";
-    if (seconds < 60) return "under a minute";
-    const m = Math.floor(seconds / 60);
-    if (m < 60) return m + (m === 1 ? " minute" : " minutes");
-    const h = Math.floor(m / 60), rest = m % 60;
-    return h + " h " + rest + " min";
-  }
-
-  function signal(rssi) {
-    if (rssi == null) return "";
-    const word = rssi >= -67 ? "good" : rssi >= -75 ? "fair" : "weak";
-    return "Wi-Fi " + word + " (" + rssi + " dBm)";
-  }
-
-  function render(changedId) {
-    const list = [...seats.values()].sort((a, b) => a.seat_id.localeCompare(b.seat_id, undefined, { numeric: true }));
-    const count = { FREE: 0, OCCUPIED: 0, AWAY: 0, OFFLINE: 0 };
-    list.forEach(s => count[s.display_state]++);
-
-    const hero = document.getElementById("hero");
-    const tally = document.getElementById("tally");
-    const grid = document.getElementById("grid");
-
-    if (list.length === 0) {
-      hero.textContent = "No seats yet";
-      tally.textContent = "";
-      grid.innerHTML = "";
-      const p = document.createElement("p");
-      p.className = "empty";
-      p.innerHTML = "Waiting for the first sensor to report. Power on a SeatNav sensor, or run " +
-                    "<code>python simulate.py</code> to add test seats.";
-      grid.appendChild(p);
-      return;
-    }
-
-    const reporting = list.length - count.OFFLINE;
-    hero.innerHTML = "";
-    const b = document.createElement("b");
-    b.textContent = count.FREE;
-    hero.append(b, " of " + reporting + (reporting === 1 ? " seat" : " seats") + " free");
-    tally.textContent = count.OCCUPIED + " occupied, " + count.AWAY + " away" +
-                        (count.OFFLINE ? ", " + count.OFFLINE + " sensor" + (count.OFFLINE === 1 ? "" : "s") + " offline" : "");
-
-    grid.innerHTML = "";
-    for (const s of list) {
-      const el = document.createElement("article");
-      el.className = "seat" + (s.seat_id === changedId ? " flash" : "");
-      el.dataset.state = s.display_state;
-
-      const h = document.createElement("h2");
-      h.textContent = s.seat_id;
-
-      const state = document.createElement("span");
-      state.className = "state";
-      state.textContent = LABEL[s.display_state];
-
-      const since = document.createElement("p");
-      since.className = "since";
-      if (s.display_state === "OFFLINE") {
-        since.textContent = s.last_seen ? "Last heard " + duration(serverNow() - s.last_seen) + " ago" : "No recent data";
-      } else if (s.state_since) {
-        since.textContent = "For " + duration(serverNow() - s.state_since);
-      }
-
-      const meta = document.createElement("p");
-      meta.className = "meta";
-      meta.textContent = s.display_state === "OFFLINE" ? "" : signal(s.rssi);
-
-      el.append(h, state, since, meta);
-      grid.appendChild(el);
-    }
-  }
-
-  function applySnapshot(data) {
-    clockOffset = data.server_time - Date.now() / 1000;
-    seats.clear();
-    data.seats.forEach(s => seats.set(s.seat_id, s));
-    render();
-  }
-
-  function connect() {
-    const conn = document.getElementById("conn");
-    const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-
-    ws.onopen = () => { conn.textContent = "Live"; conn.classList.add("ok"); };
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "snapshot") applySnapshot(msg);
-      if (msg.type === "seat") {
-        seats.set(msg.seat.seat_id, msg.seat);
-        render(msg.changed ? msg.seat.seat_id : null);
-      }
-    };
-    ws.onclose = () => {
-      conn.textContent = "Reconnecting to server…";
-      conn.classList.remove("ok");
-      setTimeout(connect, 3000);
-    };
-  }
-
-  connect();
-  setInterval(() => render(), 15000);   // keep the "for X minutes" text current
-</script>
+<script type="module" src="/static/app.js"></script>
 </body>
 </html>
