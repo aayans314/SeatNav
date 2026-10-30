@@ -377,6 +377,14 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     hit: new THREE.MeshBasicMaterial({ visible: false }),
     arrow: new THREE.MeshBasicMaterial({ toneMapped: false }),
   };
+  // closed rooms: walls fade between two greys (redrawn for each theme), plain roof
+  const roomCanvas = document.createElement('canvas');
+  roomCanvas.width = 4;
+  roomCanvas.height = 128;
+  const roomTexture = new THREE.CanvasTexture(roomCanvas);
+  roomTexture.colorSpace = THREE.SRGBColorSpace;
+  mat.roomWall = std(0xffffff, 0.9, { map: roomTexture });
+  mat.roomRoof = std(0xffffff, 0.9);
   const books = booksTexture();
   const shelfFront = std(0xffffff, 0.9, { map: books });
   const glow = glowTexture();
@@ -389,6 +397,8 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
       dark: darkScheme.matches,
       bg: color('--scene-bg'), floor: color('--scene-floor'), carpet: color('--scene-carpet'),
       wall: color('--scene-wall'), wallTop: color('--scene-wall-top'), ghost: color('--scene-ghost'), brand: color('--brand'),
+      roomTop: css.getPropertyValue('--room-top').trim() || '#eef1f4',
+      roomBottom: css.getPropertyValue('--room-bottom').trim() || '#aeb6be',
       FREE: color('--free'), OCCUPIED: color('--occupied'), AWAY: color('--away'), OFFLINE: color('--offline'),
     });
   }
@@ -403,6 +413,14 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     mat.wallTop.color.copy(palette.wallTop);
     mat.ghost.color.copy(palette.ghost);
     mat.arrow.color.copy(palette.brand);
+    const g = roomCanvas.getContext('2d');
+    const fade = g.createLinearGradient(0, 0, 0, 128);   // canvas top = top of the wall
+    fade.addColorStop(0, palette.roomTop);
+    fade.addColorStop(1, palette.roomBottom);
+    g.fillStyle = fade;
+    g.fillRect(0, 0, 4, 128);
+    roomTexture.needsUpdate = true;
+    mat.roomRoof.color.set(palette.roomTop);
     hemi.intensity = palette.dark ? 0.3 : 0.8;     // a darker room at night so the lamps glow
     sun.intensity = palette.dark ? 0.5 : 1.7;
     scene.environmentIntensity = palette.dark ? 0.3 : 1;
@@ -506,14 +524,18 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
   const arrowShape = new THREE.Shape([[-0.7, -0.14], [0.2, -0.14], [0.2, -0.38], [0.75, 0], [0.2, 0.38], [0.2, 0.14], [-0.7, 0.14]]
     .map(([x, y]) => new THREE.Vector2(x, y)));
   const arrowGeometry = new THREE.ShapeGeometry(arrowShape).rotateX(-Math.PI / 2);
+  const fullArea = { min: floorArea.min.clone(), max: floorArea.max.clone() };   // the floor plus exit labels outside it
   for (const e of layout.entrances || []) {
     const angle = ARROW_ANGLE[e.dir] ?? 0;
     const arrow = new THREE.Mesh(arrowGeometry, mat.arrow);
     arrow.position.copy(at(e.at, 0.02));
     arrow.rotation.y = angle;
     scene.add(arrow);
-    const back = new THREE.Vector3(-Math.cos(angle), 0, Math.sin(angle)).multiplyScalar(1.4);   // label sits behind the arrow
-    addLabel(scene, 'entrance-label', e.name, arrow.position.clone().add(back).setY(0.3));
+    const ahead = new THREE.Vector3(Math.cos(angle), 0, -Math.sin(angle)).multiplyScalar(1.3);   // label sits past the arrow tip
+    const tip = arrow.position.clone().add(ahead).setY(0.3);
+    addLabel(scene, 'entrance-label', e.name, tip);
+    fullArea.min.min(tip);
+    fullArea.max.max(tip);
   }
 
   for (const t of layout.tags || []) addLabel(scene, 'zone-tag', t.text, at(t.at, 1.9));
@@ -745,11 +767,10 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     else console.warn('Unknown furniture type in layout:', f.type);
   }
 
-  // ---------- closed rooms (no seats): taller walls, curtains behind the glass, a pastel roof ----------
+  // ---------- closed rooms (no seats): blank grey blocks, curtains behind any glass fronts ----------
 
   const ROOM_H = 1.9;
   const sheer = new Batch();                       // glass and curtains: no shadows
-  const roofMats = new Map();
   for (const room of layout.rooms || []) {
     const pts = room.outline;
     const centre = pts.reduce((sum, p) => sum.add(at(p)), new THREE.Vector3()).divideScalar(pts.length);
@@ -757,34 +778,27 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
       const p1 = pts[(i + 1) % pts.length];
       const { length, angle, mid } = segment(p0, p1);
       if (!(room.curtain_edges || []).includes(i)) {
-        deco.box(mat.wall, length + WALL_T, ROOM_H, WALL_T, mid.x, ROOM_H / 2, mid.z, angle);
+        deco.box(mat.roomWall, length + WALL_T, ROOM_H, WALL_T, mid.x, ROOM_H / 2, mid.z, angle);
         return;
       }
-      // glass front: white sill, posts and header, a pane, and curtains just inside
+      // glass front: sill, posts and header, a pane, and curtains just inside
       const along = new THREE.Vector3(Math.cos(-angle), 0, Math.sin(-angle));
       const inward = new THREE.Vector3(-along.z, 0, along.x);
       if (inward.dot(centre.clone().sub(mid)) < 0) inward.negate();
-      deco.box(mat.wall, length + WALL_T, 0.25, WALL_T, mid.x, 0.125, mid.z, angle);
-      deco.box(mat.wall, length + WALL_T, 0.12, WALL_T, mid.x, ROOM_H - 0.06, mid.z, angle);
+      deco.box(mat.roomWall, length + WALL_T, 0.25, WALL_T, mid.x, 0.125, mid.z, angle);
+      deco.box(mat.roomWall, length + WALL_T, 0.12, WALL_T, mid.x, ROOM_H - 0.06, mid.z, angle);
       const posts = Math.max(1, Math.round(length / 1.5));
       for (let k = 0; k <= posts; k++) {
         const t = (k / posts - 0.5) * length;
-        deco.box(mat.wall, 0.07, ROOM_H, 0.09, mid.x + along.x * t, ROOM_H / 2, mid.z + along.z * t, angle);
+        deco.box(mat.roomWall, 0.07, ROOM_H, 0.09, mid.x + along.x * t, ROOM_H / 2, mid.z + along.z * t, angle);
       }
       sheer.box(mat.glass, length, ROOM_H - 0.37, 0.03, mid.x, (ROOM_H + 0.13) / 2, mid.z, angle);
       const ch = ROOM_H - 0.45;
       sheer.add(mat.curtain, curtainGeometry(length - 0.1, ch).rotateY(angle)
         .translate(mid.x + inward.x * 0.12, 0.3 + ch / 2, mid.z + inward.z * 0.12));
     });
-    const color = room.color || '#e8e4dc';
-    if (!roofMats.has(color)) roofMats.set(color, std(color, 0.85));
     const roof = new THREE.ExtrudeGeometry(flatShape(pts), { depth: 0.06, bevelEnabled: false });
-    deco.add(roofMats.get(color), roof.rotateX(-Math.PI / 2).translate(0, ROOM_H, 0));
-    addLabel(scene, 'roof-label', (room.icon ? room.icon + ' ' : '') + room.name, centre.clone().setY(ROOM_H + 0.3));
-    if (room.garden) {
-      // a tiny roof garden
-      for (const k of [-1, 1]) BUILD.plant({ on_m: ROOM_H + 0.06 }, centre.clone().add(new THREE.Vector3(k * 0.7, 0, 0.6)));
-    }
+    deco.add(mat.roomRoof, roof.rotateX(-Math.PI / 2).translate(0, ROOM_H, 0));
   }
   sheer.addTo(scene, false);
 
@@ -974,8 +988,8 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
   const portrait = () => camera.aspect < 1;
   const views = {
     carrels: () => frame(view, layout.carrel_view.polar_deg, layout.carrel_view.theta_deg),
-    floor: () => frame(floorArea, 40, portrait() ? 90 : 0),
-    top: () => frame(floorArea, 0.5, portrait() ? 90 : 0),
+    floor: () => frame(fullArea, 40, portrait() ? 90 : 0),
+    top: () => frame(fullArea, 0.5, portrait() ? 90 : 0),
   };
 
   function flyTo({ target, position }, instant = reduceMotion.matches) {

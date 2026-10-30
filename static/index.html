@@ -42,6 +42,8 @@
     --scene-bg: #e3e7e2;
     --scene-floor: #70767a;            /* the library's charcoal carpet */
     --label-bg: rgba(255, 255, 255, 0.82);
+    --room-top: #eef1f4;               /* closed rooms: grey gradient, top to floor */
+    --room-bottom: #aab3bb;
     --scene-carpet: #5b6266;
     --scene-wall: #fdfdfb;
     --scene-wall-top: #2c332f;
@@ -71,6 +73,8 @@
       --scene-bg: #0b0f0d;
       --scene-floor: #3b4246;
       --label-bg: rgba(15, 19, 17, 0.78);
+      --room-top: #737c84;
+      --room-bottom: #30363b;
       --scene-carpet: #1b1f21;
       --scene-wall: #3c443f;
       --scene-wall-top: #a9b4ae;
@@ -114,15 +118,6 @@
     white-space: nowrap;
   }
   .entrance-label { color: var(--brand); box-shadow: var(--shadow); }
-  .roof-label {
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: var(--surface);
-    box-shadow: var(--shadow);
-    font: 700 11px/1.2 system-ui, sans-serif;
-    color: var(--text);
-    white-space: nowrap;
-  }
   .zone-tag { color: var(--muted); border: 1px dashed var(--muted); font-weight: 600; }
   .pin {
     pointer-events: auto;
