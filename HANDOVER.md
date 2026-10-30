@@ -29,6 +29,11 @@ ESP32 + LD2410 radar --POST /api/report--> FastAPI (main.py, store.py, SQLite) -
   - `"panels": false` gives plain desks with no carrel panels.
   - In Feldberg only the east block (`seat-01`…`seat-06`) is live. The four blocks are 2.7 m apart, centred on the elevator; the original sketch was too tight.
 - `furniture`: types `table`, `terminals`, `armchair`, `lounge`, `side_table`, `pillar`, `plant`, `shelves` (`stacks` / `dark` / `reference`), `counter` (`style: "cabinet"` for dark cabinets), `whiteboard`, `cart`, `book_display`, `garland` and `person` (staff, e.g. the smiling person at the front desk). Each one is a function in `BUILD` in `floor.js`.
+- `rooms`: closed rooms with no seats (conference room, restrooms and elevator, study rooms, offices). Each one gets:
+  - 1.9 m walls and a pastel roof with an emoji name tag;
+  - white curtains behind glass on the edges listed in `curtain_edges` (edge i runs from outline point i to point i+1);
+  - tiny roof plants with `garden: true`.
+- `rugs`: decorative area rugs (`at`, `size_m`, `color`).
 - Other keys:
   - `walls`, `brick`, `windows` (dark frames) and `glass` (white frames) are line segments.
   - `outline` is the floor slab.

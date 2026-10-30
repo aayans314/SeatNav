@@ -1,6 +1,6 @@
 {
   "name": "Feldberg Library · Floor 1",
-  "about": "Coordinates are pixels [x, y] of feldberg-1-plan.png (1526 x 770) next to this file; metres_per_px turns them into metres. walls/windows/glass are line segments; furniture is decoration (only compartments with seat IDs and no \"inactive\" flag are live). To change the floor, edit this file, not the code.",
+  "about": "Coordinates are pixels [x, y] of feldberg-1-plan.png (1526 x 770) next to this file; metres_per_px turns them into metres. walls/windows/glass are line segments; furniture is decoration (only compartments with seat IDs and no \"inactive\" flag are live). To change the floor, edit this file, not the code. rooms are closed rooms with no seats (curtain_edges are indexes into the outline: edge i runs from point i to point i+1); rugs are decoration.",
   "metres_per_px": 0.033,
   "away_timeout_min": 15,
   "outline": [[28, 81], [288, 81], [288, 35], [564, 35], [564, 84], [764, 84], [764, 35], [1146, 35], [1146, 84], [1425, 84], [1425, 355], [1466, 355], [1466, 717], [1311, 717], [1311, 666], [1081, 666], [1081, 555], [975, 555], [829, 406], [284, 406], [28, 163]],
@@ -15,8 +15,6 @@
     [[445, 149], [523, 149]],
     [[285, 190], [399, 190]],
     [[435, 190], [526, 190]],
-    [[552, 190], [648, 190]],
-    [[706, 190], [767, 190]],
     [[284, 406], [572, 406]],
     [[630, 406], [1111, 406]],
     [[1162, 406], [1191, 406]],
@@ -26,8 +24,6 @@
     [[1264, 666], [1314, 666]],
     [[1310, 717], [1467, 717]],
     [[28, 80], [28, 163]],
-    [[228, 80], [228, 188]],
-    [[228, 215], [228, 353]],
     [[288, 34], [288, 91]],
     [[288, 119], [288, 191]],
     [[327, 71], [327, 121]],
@@ -61,10 +57,6 @@
     [[840, 349], [840, 407]],
     [[1068, 349], [1068, 407]]
   ],
-  "glass": [[ [763, 164], [831, 164]],
-    [[896, 164], [1015, 164]],
-    [[1080, 164], [1147, 164]]
-  ],
   "landmarks": [
     {
       "kind": "stairs",
@@ -76,9 +68,6 @@
     }
   ],
   "labels": [
-    { "text": "101H Conference Room", "at": [149, 157] },
-    { "text": "Restrooms", "at": [362, 106] },
-    { "text": "Elevator", "at": [415, 155] },
     { "text": "Stacks", "at": [428, 375] },
     { "text": "Access Service Desk", "at": [953, 330] },
     { "text": "Stairs down", "at": [942, 480] },
@@ -166,5 +155,20 @@
     "polar_deg": 52
   },
   "brick": [[ [1318, 355], [1467, 355]]
+  ],
+  "rooms": [
+    { "name": "Conference room", "icon": "🤝", "outline": [[28, 81], [228, 81], [228, 353], [28, 163]], "color": "#f4d6c6", "curtain_edges": [1], "garden": true },
+    { "name": "Restrooms · Elevator", "icon": "🚻", "outline": [[288, 35], [564, 35], [564, 191], [288, 191]], "color": "#cfe3f2" },
+    { "name": "Study room", "icon": "📚", "outline": [[564, 84], [680, 84], [680, 191], [564, 191]], "color": "#e5dcf3", "curtain_edges": [2] },
+    { "name": "Study room", "icon": "📚", "outline": [[680, 84], [764, 84], [764, 191], [680, 191]], "color": "#e5dcf3", "curtain_edges": [2] },
+    { "name": "Office", "icon": "💼", "outline": [[764, 35], [864, 35], [864, 164], [764, 164]], "color": "#d9eedb", "curtain_edges": [2], "garden": true },
+    { "name": "Office", "icon": "💼", "outline": [[864, 35], [956, 35], [956, 164], [864, 164]], "color": "#f6e7b8", "curtain_edges": [2] },
+    { "name": "Office", "icon": "💼", "outline": [[956, 35], [1049, 35], [1049, 164], [956, 164]], "color": "#d9eedb", "curtain_edges": [2], "garden": true },
+    { "name": "Office", "icon": "💼", "outline": [[1049, 35], [1146, 35], [1146, 164], [1049, 164]], "color": "#f6e7b8", "curtain_edges": [2] }
+  ],
+  "rugs": [
+    { "at": [730, 374], "size_m": [6.2, 1.7], "color": "#c9734f" },
+    { "at": [1372, 120], "size_m": [2.6, 2.0], "color": "#6f8fb3" },
+    { "at": [1185, 305], "size_m": [2.4, 2.0], "color": "#d9a441" }
   ]
 }

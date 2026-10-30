@@ -69,7 +69,7 @@
       --ink-offline: #0b0e0c;
       --ink-inactive: #e7ece8;
       --scene-bg: #0b0f0d;
-      --scene-floor: #22272a;
+      --scene-floor: #3b4246;
       --label-bg: rgba(15, 19, 17, 0.78);
       --scene-carpet: #1b1f21;
       --scene-wall: #3c443f;
@@ -114,6 +114,15 @@
     white-space: nowrap;
   }
   .entrance-label { color: var(--brand); box-shadow: var(--shadow); }
+  .roof-label {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    font: 700 11px/1.2 system-ui, sans-serif;
+    color: var(--text);
+    white-space: nowrap;
+  }
   .zone-tag { color: var(--muted); border: 1px dashed var(--muted); font-weight: 600; }
   .pin {
     pointer-events: auto;

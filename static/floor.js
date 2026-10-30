@@ -192,7 +192,7 @@ function carpetTexture() {
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   for (let i = 0; i < 700; i++) {
     const shade = Math.floor(120 + rnd() * 110);
-    g.fillStyle = 'rgba(' + shade + ',' + shade + ',' + shade + ',0.45)';
+    g.fillStyle = 'rgba(' + shade + ',' + shade + ',' + shade + ',0.6)';
     g.fillRect(rnd() * 256, rnd() * 256, 8 + rnd() * 50, 1 + rnd() * 2.5);
   }
   const texture = new THREE.CanvasTexture(c);
@@ -201,6 +201,43 @@ function carpetTexture() {
   texture.repeat.set(0.4, 0.4);              // floor UVs are in metres, so one tile per 2.5 m
   texture.anisotropy = 4;
   return texture;
+}
+
+function rugTexture(color, accent) {
+  // area rug: accent border, a thin inner line and a row of diamonds
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 160;
+  const g = c.getContext('2d');
+  g.fillStyle = accent;
+  g.fillRect(0, 0, 256, 160);
+  g.fillStyle = color;
+  g.fillRect(10, 10, 236, 140);
+  g.strokeStyle = accent;
+  g.lineWidth = 3;
+  g.strokeRect(20, 20, 216, 120);
+  for (let i = 0; i < 7; i++) {
+    const x = 40 + i * 29.3;
+    g.fillStyle = i % 2 ? accent : 'rgba(255,255,255,0.35)';
+    g.beginPath();
+    g.moveTo(x, 62);
+    g.lineTo(x + 12, 80);
+    g.lineTo(x, 98);
+    g.lineTo(x - 12, 80);
+    g.fill();
+  }
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function curtainGeometry(length, height) {
+  // a white curtain with soft folds
+  const g = new THREE.PlaneGeometry(length, height, Math.max(8, Math.round(length / 0.06)), 1);
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, 0.035 * Math.sin(pos.getX(i) * 26));
+  g.computeVertexNormals();
+  return g;
 }
 
 function booksTexture() {
@@ -336,6 +373,7 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     board: std(0xf4f6f6, 0.3),
     yellow: std(0xe0b52a, 0.6),
     lantern: std(0xd2452f, 0.6),
+    curtain: std(0xfbfaf6, 0.9, { side: THREE.DoubleSide }),
     hit: new THREE.MeshBasicMaterial({ visible: false }),
     arrow: new THREE.MeshBasicMaterial({ toneMapped: false }),
   };
@@ -706,6 +744,63 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     if (build) build(f, f.at ? at(f.at) : null, THREE.MathUtils.degToRad(f.rot_deg || 0));
     else console.warn('Unknown furniture type in layout:', f.type);
   }
+
+  // ---------- closed rooms (no seats): taller walls, curtains behind the glass, a pastel roof ----------
+
+  const ROOM_H = 1.9;
+  const sheer = new Batch();                       // glass and curtains: no shadows
+  const roofMats = new Map();
+  for (const room of layout.rooms || []) {
+    const pts = room.outline;
+    const centre = pts.reduce((sum, p) => sum.add(at(p)), new THREE.Vector3()).divideScalar(pts.length);
+    pts.forEach((p0, i) => {
+      const p1 = pts[(i + 1) % pts.length];
+      const { length, angle, mid } = segment(p0, p1);
+      if (!(room.curtain_edges || []).includes(i)) {
+        deco.box(mat.wall, length + WALL_T, ROOM_H, WALL_T, mid.x, ROOM_H / 2, mid.z, angle);
+        return;
+      }
+      // glass front: white sill, posts and header, a pane, and curtains just inside
+      const along = new THREE.Vector3(Math.cos(-angle), 0, Math.sin(-angle));
+      const inward = new THREE.Vector3(-along.z, 0, along.x);
+      if (inward.dot(centre.clone().sub(mid)) < 0) inward.negate();
+      deco.box(mat.wall, length + WALL_T, 0.25, WALL_T, mid.x, 0.125, mid.z, angle);
+      deco.box(mat.wall, length + WALL_T, 0.12, WALL_T, mid.x, ROOM_H - 0.06, mid.z, angle);
+      const posts = Math.max(1, Math.round(length / 1.5));
+      for (let k = 0; k <= posts; k++) {
+        const t = (k / posts - 0.5) * length;
+        deco.box(mat.wall, 0.07, ROOM_H, 0.09, mid.x + along.x * t, ROOM_H / 2, mid.z + along.z * t, angle);
+      }
+      sheer.box(mat.glass, length, ROOM_H - 0.37, 0.03, mid.x, (ROOM_H + 0.13) / 2, mid.z, angle);
+      const ch = ROOM_H - 0.45;
+      sheer.add(mat.curtain, curtainGeometry(length - 0.1, ch).rotateY(angle)
+        .translate(mid.x + inward.x * 0.12, 0.3 + ch / 2, mid.z + inward.z * 0.12));
+    });
+    const color = room.color || '#e8e4dc';
+    if (!roofMats.has(color)) roofMats.set(color, std(color, 0.85));
+    const roof = new THREE.ExtrudeGeometry(flatShape(pts), { depth: 0.06, bevelEnabled: false });
+    deco.add(roofMats.get(color), roof.rotateX(-Math.PI / 2).translate(0, ROOM_H, 0));
+    addLabel(scene, 'roof-label', (room.icon ? room.icon + ' ' : '') + room.name, centre.clone().setY(ROOM_H + 0.3));
+    if (room.garden) {
+      // a tiny roof garden
+      for (const k of [-1, 1]) BUILD.plant({ on_m: ROOM_H + 0.06 }, centre.clone().add(new THREE.Vector3(k * 0.7, 0, 0.6)));
+    }
+  }
+  sheer.addTo(scene, false);
+
+  // ---------- area rugs ----------
+
+  for (const r of layout.rugs || []) {
+    const p = at(r.at);
+    const [w, d] = r.size_m;
+    const rug = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2),
+      new THREE.MeshStandardMaterial({ map: rugTexture(r.color, r.accent || '#f3ead8'), roughness: 1 }));
+    rug.position.set(p.x, 0.008, p.z);
+    rug.rotation.y = THREE.MathUtils.degToRad(r.rot_deg || 0);
+    rug.receiveShadow = true;
+    scene.add(rug);
+  }
+
   deco.addTo(scene);
 
   function buildCarrel(group, seatId, side, z, rowW, ghost) {
