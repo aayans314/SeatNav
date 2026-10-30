@@ -40,7 +40,8 @@
     --ink-offline: #0b0e0c;
     --ink-inactive: #2a312d;
     --scene-bg: #e3e7e2;
-    --scene-floor: #f7f5f1;
+    --scene-floor: #70767a;            /* the library's charcoal carpet */
+    --label-bg: rgba(255, 255, 255, 0.82);
     --scene-carpet: #5b6266;
     --scene-wall: #fdfdfb;
     --scene-wall-top: #2c332f;
@@ -68,7 +69,8 @@
       --ink-offline: #0b0e0c;
       --ink-inactive: #e7ece8;
       --scene-bg: #0b0f0d;
-      --scene-floor: #2a302d;
+      --scene-floor: #22272a;
+      --label-bg: rgba(15, 19, 17, 0.78);
       --scene-carpet: #1b1f21;
       --scene-wall: #3c443f;
       --scene-wall-top: #a9b4ae;
@@ -94,12 +96,15 @@
   .scene canvas { display: block; }
   .labels { position: absolute; top: 0; left: 0; pointer-events: none; }
   .room-label {
-    max-width: 120px;
+    max-width: 130px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: var(--label-bg);
     text-align: center;
     font: 600 10px/1.2 system-ui, sans-serif;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--muted);
+    color: var(--text);
   }
   .entrance-label, .zone-tag {
     padding: 4px 9px;
@@ -161,7 +166,37 @@
   .conn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
   .conn::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--offline); }
   .conn.ok::before { background: var(--free); }
+  .hero-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
   .hero { margin: 10px 0 0; font-size: 34px; line-height: 1.1; letter-spacing: -0.01em; }
+  .find {
+    pointer-events: auto;
+    flex: none;
+    min-height: 40px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--brand);
+    color: var(--on-brand);
+    font-size: 14px;
+    font-weight: 700;
+    box-shadow: var(--shadow);
+  }
+  .toast {
+    position: fixed;
+    top: calc(128px + env(safe-area-inset-top));
+    left: 50%;
+    z-index: 5;
+    transform: translateX(-50%);
+    max-width: min(92vw, 460px);
+    padding: 10px 16px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+  }
   .hero b { color: var(--free); font-weight: 750; }
   .tally { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
 
@@ -293,9 +328,14 @@
     <p class="brand">SeatNav <span id="floorName" class="where">Feldberg</span></p>
     <span id="conn" class="conn">Connecting…</span>
   </div>
-  <p class="hero"><b id="freeCount">–</b> <span id="freeText">carrels free</span></p>
+  <div class="hero-row">
+    <p class="hero"><b id="freeCount">–</b> <span id="freeText">carrels free</span></p>
+    <button id="findBtn" class="find" type="button">Find me a seat</button>
+  </div>
   <p id="tally" class="tally"></p>
 </header>
+
+<button id="toast" class="toast" type="button" hidden></button>
 
 <section id="list" class="list" aria-label="Carrels">
   <p id="fallbackNote" class="note" hidden>The 3D map can't run on this device, so here's the list instead.</p>

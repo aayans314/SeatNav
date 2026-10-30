@@ -216,6 +216,43 @@ function announce(seat) {
   if (c && !c.inactive) $('announce').textContent = seatName(seat.seat_id) + ' is now ' + LABEL[seat.display_state].toLowerCase();
 }
 
+// ---------- "Find me a seat", watching, and toasts ----------
+
+let watching = false;     // the user asked to be told when a carrel frees up
+let toastTimer = null;
+
+function toast(text, seatId = null) {
+  const el = $('toast');
+  el.textContent = text;
+  el.dataset.seat = seatId || '';
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 5000);
+}
+
+function seatChanged(before, seat) {
+  announce(seat);
+  const c = carrels.find((x) => x.seatId === seat.seat_id);
+  if (!before || !c || c.inactive || seat.display_state !== 'FREE') return;
+  toast(seatName(seat.seat_id) + ' just freed up. Tap to see it.', seat.seat_id);
+  if (watching) {
+    watching = false;
+    $('findBtn').textContent = 'Find me a seat';
+    if (navigator.vibrate) navigator.vibrate([150, 80, 150]);
+  }
+}
+
+function findSeat() {
+  const free = carrels.filter((c) => !c.inactive && stateOf(c) === 'FREE');
+  if (free.length) {
+    select(free[0].seatId);
+    return;
+  }
+  watching = !watching;
+  $('findBtn').textContent = watching ? 'Watching…' : 'Find me a seat';
+  toast(watching ? 'No free carrels right now. Keep this page open and it will buzz when one frees up.' : 'Stopped watching.');
+}
+
 async function refresh() {
   try {
     const res = await fetch('/api/seats');
@@ -235,7 +272,7 @@ function connect() {
     if (msg.type === 'seat') {
       const before = seats.get(msg.seat.seat_id);
       seats.set(msg.seat.seat_id, msg.seat);
-      if (!before || before.display_state !== msg.seat.display_state) announce(msg.seat);
+      if (!before || before.display_state !== msg.seat.display_state) seatChanged(before, msg.seat);
       render();
     }
   };
@@ -260,8 +297,9 @@ function startDemo() {
   const next = { FREE: 'OCCUPIED', OCCUPIED: 'AWAY', AWAY: 'FREE' };
   setInterval(() => {
     const id = ids[Math.floor(Math.random() * ids.length)];
-    seats.set(id, demoSeat(id, next[seats.get(id).display_state] || 'FREE', Date.now() / 1000));
-    announce(seats.get(id));
+    const before = seats.get(id);
+    seats.set(id, demoSeat(id, next[before.display_state] || 'FREE', Date.now() / 1000));
+    seatChanged(before, seats.get(id));
     render();
   }, 4000);
 }
@@ -292,6 +330,11 @@ function wireUi() {
   }));
   $('listBtn').addEventListener('click', () => setListOpen(!document.body.classList.contains('list-open')));
   $('sheetClose').addEventListener('click', () => select(null));
+  $('findBtn').addEventListener('click', findSeat);
+  $('toast').addEventListener('click', () => {
+    if ($('toast').dataset.seat) select($('toast').dataset.seat);
+    $('toast').hidden = true;
+  });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') select(null); });
 }
 
@@ -313,6 +356,9 @@ async function startFloor() {
     $('fallbackNote').hidden = false;
     setListOpen(true);
   }
+  // ?seat=seat-03 opens that carrel straight away (e.g. from a QR sticker on the desk)
+  const deepLink = new URLSearchParams(location.search).get('seat');
+  if (deepLink && carrels.some((c) => c.seatId === deepLink)) select(deepLink);
 }
 
 async function main() {

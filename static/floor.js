@@ -53,9 +53,17 @@ class Batch {
   box(material, w, h, d, x, y, z, rotY = 0) {
     const g = new THREE.BoxGeometry(w, h, d);
     if (rotY) g.rotateY(rotY);
-    g.translate(x, y, z);
+    this.add(material, g.translate(x, y, z));
+  }
+
+  // a copy of a shared geometry, turned by rotY and moved to (x, y, z)
+  place(material, geometry, x, y, z, rotY = 0) {
+    this.add(material, geometry.clone().applyMatrix4(new THREE.Matrix4().makeRotationY(rotY).setPosition(x, y, z)));
+  }
+
+  add(material, geometry) {
     if (!this.parts.has(material)) this.parts.set(material, []);
-    this.parts.get(material).push(g);
+    this.parts.get(material).push(geometry);
   }
 
   addTo(parent, shadows = true) {
@@ -199,12 +207,11 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
   const hemi = new THREE.HemisphereLight(0xffffff, 0x8c8a85, 0.8);
   const sun = new THREE.DirectionalLight(0xffffff, 1.7);
   const view = area(layout.carrel_view.box);
-  const focus = view.min.clone().add(view.max).multiplyScalar(0.5);
-  sun.position.copy(focus).add(new THREE.Vector3(-7, 16, -9));
-  sun.target.position.copy(focus);
-  sun.castShadow = true;                 // shadows only around the carrels, where they matter
+  const reach = Math.max(floorArea.max.x - floorArea.min.x, floorArea.max.z - floorArea.min.z) / 2 + 2;
+  sun.position.set(-10, 24, -13);
+  sun.castShadow = true;                 // one shadow map over the whole floor
   sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -7, right: 7, top: 7, bottom: -7, near: 1, far: 50 });
+  Object.assign(sun.shadow.camera, { left: -reach, right: reach, top: reach, bottom: -reach, near: 1, far: 90 });
   sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.03;
@@ -222,7 +229,7 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     stairs: std(0xffffff, 1),
     ghost: std(0xffffff, 1),                       // carrels without sensors
     fabric: std(0x8f9693, 1),                      // grey panels
-    wood: std(0xb0602f, 0.5),                      // cherry posts and desk tops
+    wood: std(0x95522c, 0.5),                      // cherry posts and desk tops
     counter: std(0xe9e6df, 0.8),
     metal: std(0xc3c7ca, 0.35, { metalness: 0.7 }),
     seat: std(0x2f4f92, 0.9),                      // blue chair seats
@@ -230,6 +237,13 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     person: std(0xe6dfd4, 0.75),
     laptop: std(0x3a3f46, 0.45, { metalness: 0.4 }),
     bag: std(0x6a5a9c, 0.9),
+    lavender: std(0x8f8cc4, 0.95),                 // club armchairs
+    teal: std(0x239485, 0.95),                     // lounge seats
+    shelfDark: std(0x2e2a27, 0.7),
+    monitor: std(0x15181b, 0.4),
+    leaf: std(0x4f9d3a, 0.8),
+    glass: std(0xbfdbe8, 0.1, { transparent: true, opacity: 0.32, depthWrite: false }),
+    frost: std(0xe8f0ee, 0.3, { transparent: true, opacity: 0.6, depthWrite: false }),
     hit: new THREE.MeshBasicMaterial({ visible: false }),
     arrow: new THREE.MeshBasicMaterial({ toneMapped: false }),
   };
@@ -291,6 +305,29 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     wallTops.box(mat.wallTop, length, 0.012, WALL_T + 0.004, mid.x, WALL_H + 0.006, mid.z, angle);
   }
 
+  function segment(p0, p1) {
+    const a = at(p0);
+    const b = at(p1);
+    return { length: a.distanceTo(b), angle: -Math.atan2(b.z - a.z, b.x - a.x), mid: a.clone().add(b).multiplyScalar(0.5) };
+  }
+
+  // big windows with dark frames (north-east corner) and glass office fronts with white frames;
+  // glass goes in the no-shadow batch so it doesn't darken the floor
+  for (const [list, sill, frame] of [[layout.windows || [], 0.45, mat.dark], [layout.glass || [], 0.25, mat.wall]]) {
+    for (const [p0, p1] of list) {
+      const { length, angle, mid } = segment(p0, p1);
+      const paneY = (WALL_H + sill) / 2;
+      building.box(frame, length + WALL_T, sill, WALL_T, mid.x, sill / 2, mid.z, angle);
+      wallTops.box(mat.glass, length, WALL_H - sill, 0.03, mid.x, paneY, mid.z, angle);
+      wallTops.box(frame === mat.dark ? mat.dark : mat.wallTop, length + WALL_T, 0.04, WALL_T, mid.x, WALL_H, mid.z, angle);
+      const posts = Math.max(1, Math.round(length / 1.5));
+      for (let i = 0; i <= posts; i++) {
+        const t = (i / posts - 0.5) * length;
+        building.box(frame, 0.06, WALL_H - sill, 0.08, mid.x + Math.cos(-angle) * t, paneY, mid.z + Math.sin(-angle) * t, angle);
+      }
+    }
+  }
+
   for (const lm of layout.landmarks || []) {
     if (lm.kind === 'shelves') {
       const { min, max } = area(lm.rect);
@@ -343,6 +380,8 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     addLabel(scene, 'entrance-label', e.name, arrow.position.clone().add(back).setY(0.3));
   }
 
+  for (const t of layout.tags || []) addLabel(scene, 'zone-tag', t.text, at(t.at, 1.9));
+
   // ---------- carrels ----------
 
   const chair = chairGeometries();
@@ -366,10 +405,7 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     const length = max.z - min.z;          // the spine runs north-south
     const rowW = length / comp.seats.length;
     const parts = new Batch();
-    const fabric = ghost ? mat.ghost : mat.fabric;
-    const wood = ghost ? mat.ghost : mat.wood;
-    const metal = ghost ? mat.ghost : mat.metal;
-    const dark = ghost ? mat.ghost : mat.dark;
+    const { fabric, wood, metal, dark } = mat;   // compartments without sensors look the same, minus lights and pins
 
     parts.box(fabric, SPINE_T, PANEL_H, length + PANEL_T, 0, PANEL_H / 2, 0);
     for (let i = 0; i <= comp.seats.length; i++) {
@@ -389,18 +425,145 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
       parts.box(dark, 0.05, 0.05, 0.22, side * (SPINE_T / 2 + 0.03), DESK_H + 0.06, z - rowW * 0.15);        // power strip
       carrels.set(seatId, buildCarrel(group, seatId, side, z, rowW, ghost));
     }));
+    if (!ghost) {
+      // a brand-coloured outline on the floor marks the live compartment
+      const hw = PART_DEPTH + 0.75;
+      const hl = length / 2 + 0.25;
+      for (const s of [-1, 1]) {
+        parts.box(mat.arrow, 2 * hw, 0.01, 0.06, 0, 0.012, s * hl);
+        parts.box(mat.arrow, 0.06, 0.01, 2 * hl, s * hw, 0.012, 0);
+      }
+    }
     parts.addTo(group);
-
-    if (ghost) addLabel(group, 'zone-tag', 'Not monitored yet', new THREE.Vector3(0, PANEL_H + 0.6, 0));
   }
+
+  // ---------- furniture and decoration (static, merged per material) ----------
+
+  const deco = new Batch();
+  // seats are modelled looking towards -x; FACING turns them to look the given way
+  const FACING = { west: 0, north: -Math.PI / 2, east: Math.PI, south: Math.PI / 2 };
+  const ovalTop = new THREE.CylinderGeometry(0.45, 0.45, 0.03, 28).scale(1, 1, 0.55);
+  const ovalFoot = new THREE.CylinderGeometry(0.3, 0.3, 0.02, 24).scale(1, 1, 0.6);
+  const leaves = merge([0, 1, 2, 3, 4, 5].map((i) =>
+    new THREE.ConeGeometry(0.05, 0.5, 4).translate(0, 0.25, 0).rotateZ(0.6).rotateY(i * 1.05)));
+
+  const turn = (lx, lz, a) => [lx * Math.cos(a) + lz * Math.sin(a), -lx * Math.sin(a) + lz * Math.cos(a)];
+  function part(p, a, material, lx, y, lz, w, h, d) {
+    const [ox, oz] = turn(lx, lz, a);
+    deco.box(material, w, h, d, p.x + ox, y, p.z + oz, a);
+  }
+  function officeChair(p, a, lx, lz, look) {
+    const [ox, oz] = turn(lx, lz, a);
+    deco.place(mat.seat, chair.seat, p.x + ox, 0, p.z + oz, a + look);
+    deco.place(mat.dark, chair.frame, p.x + ox, 0, p.z + oz, a + look);
+  }
+
+  const BUILD = {
+    // group or study table: long side along local x, office chairs along both long sides
+    table(f, p, a) {
+      const [w, d] = f.size_m || [1.6, 0.8];
+      const [south, north] = f.seats || [0, 0];
+      part(p, a, f.top === 'light' ? mat.counter : mat.wood, 0, 0.74, 0, w, 0.05, d);
+      if (f.base === 'panel') {
+        for (const s of [-1, 1]) part(p, a, mat.wood, s * (w / 2 - 0.05), 0.36, 0, 0.05, 0.72, d - 0.12);
+        part(p, a, mat.wood, 0, 0.42, 0, w - 0.12, 0.55, 0.04);
+      } else {
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) part(p, a, mat.metal, sx * (w / 2 - 0.06), 0.36, sz * (d / 2 - 0.06), 0.05, 0.72, 0.05);
+      }
+      for (const [n, side] of [[south, 1], [north, -1]]) {
+        for (let i = 0; i < n; i++) officeChair(p, a, (i - (n - 1) / 2) * (w / n), side * (d / 2 + 0.32), side > 0 ? FACING.north : FACING.south);
+      }
+    },
+    // Bloomberg cluster: two desks each side of a frosted divider, one more across the north end
+    terminals(f, p, a) {
+      for (const side of [-1, 1]) {
+        for (const k of [-0.62, 0.62]) {
+          part(p, a, mat.wood, side * 0.42, 0.74, k, 0.78, 0.05, 1.2);
+          part(p, a, mat.metal, side * 0.78, 0.36, k, 0.05, 0.72, 1.1);
+          for (const m of [-0.27, 0.27]) part(p, a, mat.monitor, side * 0.15, 1.02, k + m, 0.03, 0.32, 0.52);
+          officeChair(p, a, side * 1.05, k, side > 0 ? FACING.west : FACING.east);
+        }
+      }
+      part(p, a, mat.frost, 0, 1.0, 0, 0.03, 0.5, 2.5);
+      part(p, a, mat.wood, 0, 0.74, -1.63, 1.2, 0.05, 0.78);
+      for (const m of [-0.27, 0.27]) part(p, a, mat.monitor, m, 1.02, -1.32, 0.52, 0.32, 0.03);
+      officeChair(p, a, 0, -2.34, FACING.south);
+    },
+    // lavender club armchair
+    armchair(f, p) {
+      const a = FACING[f.facing] ?? 0;
+      part(p, a, mat.lavender, 0, 0.22, 0, 0.72, 0.36, 0.62);
+      part(p, a, mat.lavender, 0.3, 0.45, 0, 0.16, 0.82, 0.8);
+      for (const s of [-1, 1]) part(p, a, mat.lavender, 0, 0.33, s * 0.34, 0.76, 0.62, 0.14);
+    },
+    // teal armless lounge seats in a row
+    lounge(f, p) {
+      const a = FACING[f.facing] ?? 0;
+      const n = f.seats || 1;
+      for (let i = 0; i < n; i++) {
+        const lz = (i - (n - 1) / 2) * 0.72;
+        part(p, a, mat.teal, 0, 0.21, lz, 0.7, 0.42, 0.7);
+        part(p, a, mat.teal, 0.29, 0.6, lz, 0.12, 0.42, 0.7);
+      }
+    },
+    // oval wood table on a pedestal, next to lounge seats
+    side_table(f, p, a) {
+      deco.place(mat.wood, ovalTop, p.x, 0.62, p.z, a);
+      deco.place(mat.dark, ovalFoot, p.x, 0.01, p.z, a);
+      part(p, a, mat.metal, 0, 0.31, 0, 0.05, 0.6, 0.05);
+    },
+    pillar(f, p) {
+      const s = f.size_m || 0.6;
+      deco.box(mat.wall, s, 1.5, s, p.x, 0.75, p.z);
+    },
+    plant(f, p) {
+      const y = f.on_m || 0;
+      deco.add(mat.dark, new THREE.CylinderGeometry(0.13, 0.1, 0.24, 12).translate(p.x, y + 0.12, p.z));
+      deco.place(mat.leaf, leaves, p.x, y + 0.2, p.z);
+    },
+    // bookcases along a line: the stacks, dark wall shelves, and the bent reference bookcase
+    shelves(f) {
+      const h = f.height_m || 1.6;
+      const d = f.depth_m || 0.45;
+      const side = f.style === 'dark' ? mat.shelfDark : f.style === 'reference' ? mat.wood : mat.counter;
+      for (let i = 0; i + 1 < f.line.length; i++) {
+        const { length, angle, mid } = segment(f.line[i], f.line[i + 1]);
+        const texture = books.clone();
+        texture.repeat.set(length / 2.4, f.style === 'reference' ? 0.5 : 1);
+        texture.needsUpdate = true;
+        const front = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.9 });
+        const shelf = new THREE.Mesh(new THREE.BoxGeometry(length + (i ? d : 0), h, d), [side, side, side, side, front, front]);
+        shelf.position.set(mid.x, h / 2, mid.z);
+        shelf.rotation.y = angle;
+        shelf.castShadow = shelf.receiveShadow = true;
+        scene.add(shelf);
+      }
+    },
+    // service counter: wood top on a light body, along a line
+    counter(f) {
+      const d = f.depth_m || 0.6;
+      for (let i = 0; i + 1 < f.line.length; i++) {
+        const { length, angle, mid } = segment(f.line[i], f.line[i + 1]);
+        deco.box(mat.counter, length + d, 1.0, d, mid.x, 0.5, mid.z, angle);
+        deco.box(mat.wood, length + d + 0.04, 0.05, d + 0.08, mid.x, 1.03, mid.z, angle);
+      }
+    },
+  };
+
+  for (const f of layout.furniture || []) {
+    const build = BUILD[f.type];
+    if (build) build(f, f.at ? at(f.at) : null, THREE.MathUtils.degToRad(f.rot_deg || 0));
+    else console.warn('Unknown furniture type in layout:', f.type);
+  }
+  deco.addTo(scene);
 
   function buildCarrel(group, seatId, side, z, rowW, ghost) {
     const c = { seatId, side, ghost, state: null, pull: 0, turn: 0, target: [0, 0] };
     c.worldPos = group.position.clone().add(new THREE.Vector3(side * 0.6, 0, z));
 
     c.chair = new THREE.Group();
-    const seat = new THREE.Mesh(chair.seat, ghost ? mat.ghost : mat.seat);
-    const frame = new THREE.Mesh(chair.frame, ghost ? mat.ghost : mat.dark);
+    const seat = new THREE.Mesh(chair.seat, mat.seat);
+    const frame = new THREE.Mesh(chair.frame, mat.dark);
     seat.castShadow = frame.castShadow = true;
     c.chair.add(seat, frame);
     c.chairX = side * (SPINE_T / 2 + DESK_D + 0.14);
