@@ -1,18 +1,24 @@
 /*
-  SeatNav live floor map: loads the floor layout and the live seat data, and drives
-  the summary, the list, the seat detail sheet and (once loaded) the 3D view in floor.js.
+  SeatNav web app: picks a place, loads its floor layout and the live seat data, and
+  drives the header, the list, the seat sheet, the place picker and (once loaded) the
+  3D view in floor.js.
 
-  Data comes from the backend:
-    GET /api/seats + WS /ws               live state of every sensor
-    GET /api/seats/{id}/usage, /history   the detail sheet
-  Add ?demo to the URL to see the map with made-up data (nothing is sent to the server).
+  Data:
+    static/places.json                    places in the picker; open ones point at a layout file
+    GET /api/seats + WS /ws               live state of every sensor (each place only shows its own seats)
+    GET /api/seats/{id}/usage, /history   the seat sheet
+  URL options: ?place=<id>  ?view=floor|top  ?seat=<seat id>  ?list  ?demo (made-up data, nothing sent)
+
+  Wording is for students: short, no sensor jargon. A layout with "testing": true
+  (the sensor test bench) also shows raw sensor details for debugging.
 */
 
-const LAYOUT_URL = '/static/layout/feldberg-1.json';
-const DEMO = new URLSearchParams(location.search).has('demo');
+const params = new URLSearchParams(location.search);
+const DEMO = params.has('demo');
+const PLACE_KEY = 'seatnav.place';
 
-const LABEL = { FREE: 'Free', OCCUPIED: 'Occupied', AWAY: 'Away', OFFLINE: 'Sensor offline', INACTIVE: 'Not monitored yet' };
-const ORDER = { FREE: 0, AWAY: 1, OCCUPIED: 2, OFFLINE: 3, INACTIVE: 4 };   // list order: free seats first
+const LABEL = { FREE: 'Free', OCCUPIED: 'Taken', AWAY: 'Away', OFFLINE: 'Unavailable', INACTIVE: 'Coming soon' };
+const ORDER = { FREE: 0, AWAY: 1, OCCUPIED: 2, OFFLINE: 3, INACTIVE: 4 };   // free seats first
 const ICONS = {
   FREE: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   OCCUPIED: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7.5" r="4" fill="currentColor"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0z" fill="currentColor"/></svg>',
@@ -21,8 +27,11 @@ const ICONS = {
   INACTIVE: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>',
 };
 
+let places = null;              // places.json
+let place = null;               // the place being shown
 let layout = null;
-let carrels = [];               // [{ seatId, inactive }] in layout order
+let testing = false;            // test bench: show raw sensor details
+let seatList = [];              // [{ seatId, inactive }] of this place, in layout order
 const seats = new Map();        // seat_id -> latest seat from the backend
 let clockOffset = 0;            // server time minus this device's time (s)
 let floor = null;               // the 3D view, once floor.js has loaded
@@ -31,19 +40,28 @@ let selectedId = null;
 const $ = (id) => document.getElementById(id);
 const serverNow = () => Date.now() / 1000 + clockOffset;
 
-// ---------- helpers ----------
+// ---------- wording ----------
 
 function seatName(id) {
+  if (layout.seat_names && layout.seat_names[id]) return layout.seat_names[id];
   const m = /^seat-0*(\d+)$/.exec(id);
   return m ? 'Seat ' + m[1] : id;
 }
 
-function duration(seconds) {
-  if (seconds == null || seconds < 0) return '';
-  if (seconds < 60) return 'under a minute';
+function pinText(id) {
+  const m = /^seat-0*(\d+)$/.exec(id);
+  return m ? m[1] : seatName(id).charAt(0).toUpperCase();
+}
+
+function minutes(seconds) {
   const m = Math.floor(seconds / 60);
-  if (m < 60) return m + ' min';
-  return Math.floor(m / 60) + ' h ' + (m % 60) + ' min';
+  return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min';
+}
+
+function ago(ts) {
+  if (!ts) return 'never';
+  const s = Math.max(0, Math.round(serverNow() - ts));
+  return s < 60 ? s + ' s ago' : minutes(s) + ' ago';
 }
 
 function clockTime(ts) {
@@ -57,89 +75,104 @@ function stateOf(c) {
   return seat ? seat.display_state : 'OFFLINE';
 }
 
-function sinceText(c, state) {
+// one short line under a seat's state; raw sensor details on the test bench only
+function detail(c, state) {
   const seat = seats.get(c.seatId);
-  if (state === 'INACTIVE') return 'No sensor installed yet';
-  if (!seat) return 'No data from this sensor yet';
-  if (state === 'OFFLINE') return seat.last_seen ? 'Last heard ' + duration(serverNow() - seat.last_seen) + ' ago' : 'No recent data';
-  if (!seat.state_since) return '';
+  if (testing && !c.inactive) {
+    if (!seat) return 'No data from this sensor yet';
+    const bits = ['Last heard ' + ago(seat.last_seen)];
+    if (seat.rssi != null) bits.push(seat.rssi + ' dBm');
+    if (seat.near != null) bits.push(seat.near ? 'someone near' : 'nobody near');
+    return bits.join(' · ');
+  }
+  if (!seat || !seat.state_since || (state !== 'FREE' && state !== 'OCCUPIED' && state !== 'AWAY')) return '';
   const held = serverNow() - seat.state_since;
   if (state === 'AWAY') {
-    // the sensor frees an AWAY seat after away_timeout_min (15 min in the real firmware timings)
+    // the sensor frees an away seat after away_timeout_min
     const left = layout.away_timeout_min * 60 - held;
-    return 'Away ' + duration(held) + (left > 60 ? ' · frees up in ≤ ' + Math.ceil(left / 60) + ' min' : ' · may free up any moment');
+    return left > 60 ? 'Frees in ≤ ' + Math.ceil(left / 60) + ' min' : 'May free up soon';
   }
-  return 'For ' + duration(held);
+  return held < 60 ? 'Just now' : 'For ' + minutes(held);
 }
 
 function badge(state) {
   return '<span class="badge" data-state="' + state + '">' + ICONS[state] + '</span>';
 }
 
+function counts() {
+  const n = { FREE: 0, OCCUPIED: 0, AWAY: 0, OFFLINE: 0 };
+  seatList.filter((c) => !c.inactive).forEach((c) => n[stateOf(c)]++);
+  return n;
+}
+
 // ---------- rendering ----------
 
 function render() {
-  const active = carrels.filter((c) => !c.inactive);
-  const count = { FREE: 0, OCCUPIED: 0, AWAY: 0, OFFLINE: 0 };
-  active.forEach((c) => count[stateOf(c)]++);
-  const reporting = active.length - count.OFFLINE;
-
-  $('freeCount').textContent = reporting ? count.FREE : '–';
-  $('freeText').textContent = reporting ? (count.FREE === 1 ? 'carrel free' : 'carrels free') : 'waiting for sensors';
-  $('tally').textContent = [count.OCCUPIED + ' occupied', count.AWAY + ' away', count.OFFLINE ? count.OFFLINE + ' offline' : '']
-    .filter(Boolean).join(' · ');
-
-  renderList();
-  if (floor) floor.setStates(new Map(carrels.map((c) => [c.seatId, stateOf(c)])));
+  const n = counts();
+  const reporting = n.FREE + n.OCCUPIED + n.AWAY;
+  $('freeCount').textContent = reporting ? n.FREE : '–';
+  $('freeText').textContent = !reporting ? 'No live data' : n.FREE === 1 ? 'seat free' : 'seats free';
+  $('tally').textContent = reporting
+    ? [n.OCCUPIED ? n.OCCUPIED + ' taken' : '', n.AWAY ? n.AWAY + ' away' : ''].filter(Boolean).join(' · ') || 'Everything is free'
+    : '';
+  renderList(n);
+  if (floor) floor.setStates(new Map(seatList.map((c) => [c.seatId, stateOf(c)])));
   if (selectedId) renderSheetHeader();
 }
 
-function renderList() {
-  const rows = carrels.filter((c) => !c.inactive)
-    .map((c) => ({ c, state: stateOf(c) }))
-    .sort((a, b) => ORDER[a.state] - ORDER[b.state] || a.c.seatId.localeCompare(b.c.seatId, undefined, { numeric: true }));
+function renderList(n) {
+  const live = seatList.filter((c) => !c.inactive);
+  const total = live.length || 1;
+  $('listSummary').innerHTML =
+    '<div class="bar">' + ['FREE', 'AWAY', 'OCCUPIED', 'OFFLINE'].filter((k) => n[k])
+      .map((k) => '<span data-state="' + k + '" style="flex:' + n[k] / total + '"></span>').join('') + '</div>' +
+    '<p>' + ['FREE', 'OCCUPIED', 'AWAY', 'OFFLINE'].filter((k) => n[k]).map((k) => n[k] + ' ' + LABEL[k].toLowerCase()).join(' · ') + '</p>';
+
   const ul = $('listItems');
   ul.textContent = '';
-  for (const { c, state } of rows) {
-    const li = document.createElement('li');
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'row';
-    btn.dataset.state = state;
-    btn.innerHTML = badge(state) + '<span class="row-main"><b></b><span class="row-sub"></span></span><span class="row-state"></span>';
-    btn.querySelector('b').textContent = seatName(c.seatId);
-    btn.querySelector('.row-sub').textContent = sinceText(c, state);
-    btn.querySelector('.row-state').textContent = LABEL[state];
-    btn.addEventListener('click', () => select(c.seatId));
-    li.appendChild(btn);
-    ul.appendChild(li);
-  }
+  live.map((c) => ({ c, state: stateOf(c) }))
+    .sort((a, b) => ORDER[a.state] - ORDER[b.state] || a.c.seatId.localeCompare(b.c.seatId, undefined, { numeric: true }))
+    .forEach(({ c, state }) => {
+      const li = document.createElement('li');
+      const tile = document.createElement('button');
+      tile.type = 'button';
+      tile.className = 'tile';
+      tile.dataset.state = state;
+      tile.innerHTML = '<span class="tile-num"></span><span class="tile-state">' + badge(state) + LABEL[state] + '</span><span class="tile-sub"></span>';
+      tile.querySelector('.tile-num').textContent = seatName(c.seatId);
+      tile.querySelector('.tile-sub').textContent = detail(c, state);
+      tile.setAttribute('aria-label', seatName(c.seatId) + ', ' + LABEL[state]);
+      tile.addEventListener('click', () => select(c.seatId));
+      li.appendChild(tile);
+      ul.appendChild(li);
+    });
 
-  const notes = [];
-  const ghosts = carrels.filter((c) => c.inactive);
-  if (ghosts.length) notes.push(ghosts.length + ' more carrels (' + ghosts.map((c) => seatName(c.seatId).replace('Seat ', '')).join(', ') + ') are not monitored yet.');
-  const placed = new Set(carrels.map((c) => c.seatId));
-  const unplaced = [...seats.keys()].filter((id) => !placed.has(id));
-  if (unplaced.length) notes.push('Also reporting, but not on the map yet: ' + unplaced.join(', ') + '. Add them to the layout file.');
-  $('listNote').textContent = notes.join(' ');
+  const soon = seatList.length - live.length;
+  $('listSoon').hidden = !soon;
+  $('listSoon').innerHTML = badge('INACTIVE') + '<span><b>' + soon + ' more seats</b> coming soon</span>';
+
+  // test bench only: other sensors the backend hears from, to catch a mistyped SEAT_ID
+  const here = new Set(seatList.map((c) => c.seatId));
+  const others = [...seats.keys()].filter((id) => !here.has(id));
+  $('listDebug').hidden = !testing || !others.length;
+  $('listDebug').textContent = 'Other sensors reporting: ' + others.join(', ');
 }
 
 function decoratePin(pin, { seatId, state, selected }) {
   state = state || 'OFFLINE';
   const key = state + (selected ? '+' : '');
-  if (pin.dataset.key !== key) {
-    pin.dataset.key = key;
-    pin.dataset.state = state;
-    pin.classList.toggle('selected', selected);
-    pin.innerHTML = ICONS[state] + '<span>' + seatName(seatId).replace('Seat ', '') + '</span>';
-    pin.setAttribute('aria-label', seatName(seatId) + ': ' + LABEL[state]);
-  }
+  if (pin.dataset.key === key) return;
+  pin.dataset.key = key;
+  pin.dataset.state = state;
+  pin.classList.toggle('selected', selected);
+  pin.innerHTML = ICONS[state] + '<span>' + pinText(seatId) + '</span>';
+  pin.setAttribute('aria-label', seatName(seatId) + ': ' + LABEL[state]);
 }
 
-// ---------- detail sheet ----------
+// ---------- seat sheet ----------
 
 function renderSheetHeader() {
-  const c = carrels.find((x) => x.seatId === selectedId);
+  const c = seatList.find((x) => x.seatId === selectedId);
   if (!c) return;
   const state = stateOf(c);
   $('sheetTitle').textContent = seatName(c.seatId);
@@ -147,7 +180,7 @@ function renderSheetHeader() {
   chip.dataset.state = state;
   chip.innerHTML = ICONS[state] + '<span></span>';
   chip.querySelector('span').textContent = LABEL[state];
-  $('sheetSince').textContent = sinceText(c, state);
+  $('sheetSince').textContent = detail(c, state);
 }
 
 async function select(seatId) {
@@ -158,43 +191,55 @@ async function select(seatId) {
     sheet.hidden = true;
     return;
   }
-  if (floor) setListOpen(false);    // show the map behind the sheet
+  if (floor) setListOpen(false);   // show the map behind the sheet
   sheet.hidden = false;
   renderSheetHeader();
 
   const body = $('sheetBody');
-  const c = carrels.find((x) => x.seatId === seatId);
+  const c = seatList.find((x) => x.seatId === seatId);
   if (!c || c.inactive) {
-    body.innerHTML = '<p class="muted">This carrel doesn\'t have a sensor yet, so SeatNav can\'t tell whether it\'s free. It will light up here once one is installed.</p>';
+    body.innerHTML = '<p class="muted">Live status for this seat is coming soon.</p>';
     return;
   }
-  body.innerHTML = '<p class="muted">Loading the last 24 hours…</p>';
+  body.innerHTML = '<p class="muted">Loading…</p>';
   try {
     const base = '/api/seats/' + encodeURIComponent(seatId);
     const [usage, history] = DEMO ? demoDetails(seatId) : await Promise.all([
       fetch(base + '/usage?hours=24').then((r) => r.json()),
       fetch(base + '/history?hours=24').then((r) => r.json()),
     ]);
-    if (selectedId === seatId) renderDetails(usage, history);
+    if (selectedId === seatId) renderDetails(seatId, usage, history);
   } catch (e) {
-    if (selectedId === seatId) body.innerHTML = '<p class="muted">Couldn\'t load this seat\'s history (' + e.message + ').</p>';
+    if (selectedId === seatId) body.innerHTML = '<p class="muted">History isn\'t available right now.</p>';
   }
 }
 
-function renderDetails(usage, history) {
-  const body = $('sheetBody');
-  const known = usage.percent.OCCUPIED + usage.percent.AWAY + usage.percent.FREE;
-  const bar = ['OCCUPIED', 'AWAY', 'FREE'].filter((k) => usage.percent[k] > 0)
-    .map((k) => '<span data-state="' + k + '" style="flex:' + usage.percent[k] + '"></span>').join('');
+function renderDetails(seatId, usage, history) {
+  const p = usage.percent || {};
+  const known = (p.OCCUPIED || 0) + (p.AWAY || 0) + (p.FREE || 0);
+  const bar = ['OCCUPIED', 'AWAY', 'FREE'].filter((k) => p[k] > 0)
+    .map((k) => '<span data-state="' + k + '" style="flex:' + p[k] + '"></span>').join('');
   const changes = (history.events || []).filter((e) => e.kind === 'state').slice(-6).reverse();
-  body.innerHTML =
+  let html =
     '<h3>Last 24 hours</h3>' +
-    (known ? '<div class="bar">' + bar + '</div><p class="muted">Occupied ' + usage.percent.OCCUPIED + '% · away ' +
-      usage.percent.AWAY + '% · free ' + usage.percent.FREE + '%</p>' : '<p class="muted">No data yet.</p>') +
+    (known ? '<div class="bar">' + bar + '</div><p class="muted">Taken ' + p.OCCUPIED + '% · away ' + p.AWAY + '% · free ' + p.FREE + '%</p>'
+      : '<p class="muted">No history yet.</p>') +
     '<h3>Recent changes</h3>' +
     (changes.length
       ? '<ul class="changes">' + changes.map((e) => '<li><time>' + clockTime(e.ts) + '</time>' + badge(e.value) + LABEL[e.value] + '</li>').join('') + '</ul>'
-      : '<p class="muted">No changes in the last 24 hours.</p>');
+      : '<p class="muted">No changes today.</p>');
+
+  const seat = seats.get(seatId);
+  if (testing && seat) {
+    const rows = [
+      ['Sensor ID', seat.seat_id], ['Last heard', ago(seat.last_seen)], ['Signal', seat.rssi != null ? seat.rssi + ' dBm' : '–'],
+      ['Someone near', seat.near == null ? '–' : seat.near ? 'yes' : 'no'],
+      ['Moving target', seat.moving_cm != null ? seat.moving_cm + ' cm' : '–'], ['Still target', seat.still_cm != null ? seat.still_cm + ' cm' : '–'],
+      ['State since', seat.state_since ? clockTime(seat.state_since) : '–'],
+    ];
+    html += '<h3>Sensor</h3><dl class="debug">' + rows.map(([k, v]) => '<dt>' + k + '</dt><dd>' + v + '</dd>').join('') + '</dl>';
+  }
+  $('sheetBody').innerHTML = html;
 }
 
 // ---------- live data ----------
@@ -211,55 +256,13 @@ function applySnapshot(data) {
   render();
 }
 
-function announce(seat) {
-  const c = carrels.find((x) => x.seatId === seat.seat_id);
-  if (c && !c.inactive) $('announce').textContent = seatName(seat.seat_id) + ' is now ' + LABEL[seat.display_state].toLowerCase();
-}
-
-// ---------- "Find me a seat", watching, and toasts ----------
-
-let watching = false;     // the user asked to be told when a carrel frees up
-let toastTimer = null;
-
-function toast(text, seatId = null) {
-  const el = $('toast');
-  el.textContent = text;
-  el.dataset.seat = seatId || '';
-  el.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 5000);
-}
-
-function seatChanged(before, seat) {
-  announce(seat);
-  const c = carrels.find((x) => x.seatId === seat.seat_id);
-  if (!before || !c || c.inactive || seat.display_state !== 'FREE') return;
-  toast(seatName(seat.seat_id) + ' just freed up. Tap to see it.', seat.seat_id);
-  if (watching) {
-    watching = false;
-    $('findBtn').textContent = 'Find me a seat';
-    if (navigator.vibrate) navigator.vibrate([150, 80, 150]);
-  }
-}
-
-function findSeat() {
-  const free = carrels.filter((c) => !c.inactive && stateOf(c) === 'FREE');
-  if (free.length) {
-    select(free[0].seatId);
-    return;
-  }
-  watching = !watching;
-  $('findBtn').textContent = watching ? 'Watching…' : 'Find me a seat';
-  toast(watching ? 'No free carrels right now. Keep this page open and it will buzz when one frees up.' : 'Stopped watching.');
-}
-
 async function refresh() {
   try {
     const res = await fetch('/api/seats');
-    if (!res.ok) throw new Error('the server answered ' + res.status);
+    if (!res.ok) throw new Error(res.status);
     applySnapshot(await res.json());
   } catch (e) {
-    setConn('Server unreachable', false);
+    setConn('Offline', false);
   }
 }
 
@@ -282,15 +285,53 @@ function connect() {
   };
 }
 
+// ---------- "Find a seat", watching, toasts ----------
+
+let watching = false;     // the user asked to be told when a seat frees up
+let toastTimer = null;
+
+function toast(text, seatId = null) {
+  const el = $('toast');
+  el.textContent = text;
+  el.dataset.seat = seatId || '';
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 5000);
+}
+
+function seatChanged(before, seat) {
+  const c = seatList.find((x) => x.seatId === seat.seat_id);
+  if (!c || c.inactive) return;                 // not a seat of this place
+  $('announce').textContent = seatName(seat.seat_id) + ' is now ' + LABEL[seat.display_state].toLowerCase();
+  if (!before || seat.display_state !== 'FREE') return;
+  toast(seatName(seat.seat_id) + ' is free', seat.seat_id);
+  if (watching) {
+    watching = false;
+    $('findBtn').textContent = 'Find a seat';
+    if (navigator.vibrate) navigator.vibrate([150, 80, 150]);
+  }
+}
+
+function findSeat() {
+  const free = seatList.filter((c) => !c.inactive && stateOf(c) === 'FREE');
+  if (free.length) {
+    select(free[0].seatId);
+    return;
+  }
+  watching = !watching;
+  $('findBtn').textContent = watching ? 'Watching…' : 'Find a seat';
+  toast(watching ? 'Nothing free yet. We\'ll buzz you.' : 'Stopped watching');
+}
+
 // ---------- demo mode (?demo): made-up data, nothing sent to the server ----------
 
 function demoSeat(id, state, since) {
-  return { seat_id: id, state, display_state: state, live: true, rssi: -60, last_seen: Date.now() / 1000, state_since: since };
+  return { seat_id: id, state, display_state: state, live: true, rssi: -60, near: state === 'OCCUPIED', last_seen: Date.now() / 1000, state_since: since };
 }
 
 function startDemo() {
-  setConn('Demo data', true);
-  const ids = carrels.filter((c) => !c.inactive).map((c) => c.seatId);
+  setConn('Demo', true);
+  const ids = seatList.filter((c) => !c.inactive).map((c) => c.seatId);
   const start = ['FREE', 'OCCUPIED', 'AWAY', 'OCCUPIED', 'FREE', 'OCCUPIED'];
   ids.forEach((id, i) => seats.set(id, demoSeat(id, start[i % start.length], Date.now() / 1000 - 120 - i * 340)));
   render();
@@ -305,12 +346,55 @@ function startDemo() {
 }
 
 function demoDetails(seatId) {
-  const occupied = 35 + (parseInt(seatId.replace(/\D/g, ''), 10) % 5) * 8;
+  const taken = 35 + (parseInt(seatId.replace(/\D/g, ''), 10) % 5) * 8;
   const now = Date.now() / 1000;
   return [
-    { percent: { OCCUPIED: occupied, AWAY: 9, FREE: 100 - occupied - 9 } },
+    { percent: { OCCUPIED: taken, AWAY: 9, FREE: 100 - taken - 9 } },
     { events: [['OCCUPIED', 5400], ['AWAY', 3100], ['OCCUPIED', 2700], ['FREE', 900]].map(([value, ago]) => ({ kind: 'state', value, ts: now - ago })) },
   ];
+}
+
+// ---------- place picker ----------
+
+function allPlaces() {
+  return places.groups.flatMap((g) => g.places);
+}
+
+function storedPlace() {
+  try { return localStorage.getItem(PLACE_KEY); } catch (e) { return null; }
+}
+
+function choosePlace() {
+  const open = (id) => allPlaces().find((p) => p.id === id && p.layout);
+  return open(params.get('place')) || open(storedPlace()) || open(places.default);
+}
+
+function openPlace(id) {
+  const target = allPlaces().find((p) => p.id === id);
+  if (!target || !target.layout) return;
+  if (!target.testing) {
+    try { localStorage.setItem(PLACE_KEY, id); } catch (e) { /* private mode: just don't remember */ }
+  }
+  location.search = '?place=' + encodeURIComponent(id) + (DEMO ? '&demo' : '');
+}
+
+function renderPlaces() {
+  const n = counts();
+  const here = testing || !(n.FREE + n.OCCUPIED + n.AWAY) ? 'Viewing' : n.FREE + ' free';
+  $('placesBody').innerHTML = places.groups.map((g) =>
+    '<h3>' + g.title + '</h3><ul>' + g.places.map((p) => {
+      const current = p.id === place.id;
+      const pill = current ? '<span class="pill current">' + here + '</span>'
+        : p.layout ? '<span class="pill live">' + (p.testing ? 'Test' : 'Live') + '</span>'
+          : '<span class="pill">Soon</span>';
+      return '<li><button type="button" class="place" data-place="' + p.id + '"' + (p.layout ? '' : ' disabled') + '>' +
+        '<span class="place-main"><b>' + p.name + '</b><small>' + p.detail + '</small></span>' + pill + '</button></li>';
+    }).join('') + '</ul>').join('');
+}
+
+function setPlacesOpen(open) {
+  if (open) renderPlaces();
+  $('places').hidden = !open;
 }
 
 // ---------- page ----------
@@ -335,7 +419,19 @@ function wireUi() {
     if ($('toast').dataset.seat) select($('toast').dataset.seat);
     $('toast').hidden = true;
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') select(null); });
+  $('placeBtn').addEventListener('click', () => setPlacesOpen(true));
+  $('placesClose').addEventListener('click', () => setPlacesOpen(false));
+  $('placesBody').addEventListener('click', (e) => {
+    const button = e.target.closest('[data-place]');
+    if (!button || button.disabled) return;
+    if (button.dataset.place === place.id) setPlacesOpen(false);
+    else openPlace(button.dataset.place);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!$('places').hidden) setPlacesOpen(false);
+    else select(null);
+  });
 }
 
 async function startFloor() {
@@ -343,8 +439,7 @@ async function startFloor() {
     const { createFloor } = await import('/static/floor.js');
     floor = createFloor($('scene'), layout, { onSelect: select, decoratePin });
     render();
-    // ?view=floor or ?view=top opens a different preset (handy for a QR code at the entrance)
-    const start = new URLSearchParams(location.search).get('view');
+    const start = params.get('view');
     const button = start && document.querySelector('[data-view="' + CSS.escape(start) + '"]');
     if (button) {
       document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
@@ -356,30 +451,38 @@ async function startFloor() {
     $('fallbackNote').hidden = false;
     setListOpen(true);
   }
-  // ?seat=seat-03 opens that carrel straight away (e.g. from a QR sticker on the desk)
-  const deepLink = new URLSearchParams(location.search).get('seat');
-  if (deepLink && carrels.some((c) => c.seatId === deepLink)) select(deepLink);
+  // ?seat=seat-03 opens that seat straight away (e.g. from a QR sticker on the desk)
+  const deepLink = params.get('seat');
+  if (deepLink && seatList.some((c) => c.seatId === deepLink)) select(deepLink);
 }
 
 async function main() {
   wireUi();
   try {
-    layout = await (await fetch(LAYOUT_URL)).json();
+    places = await (await fetch('/static/places.json')).json();
+    place = choosePlace();
+    layout = await (await fetch(place.layout)).json();
   } catch (e) {
-    $('freeText').textContent = 'couldn\'t load the floor layout';
+    $('freeText').textContent = 'Couldn\'t load this place';
     return;
   }
-  $('floorName').textContent = layout.name;
-  carrels = layout.compartments.flatMap((comp) =>
+  testing = !!layout.testing;
+  document.body.classList.toggle('testing', testing);
+  $('testBadge').hidden = !testing;
+  $('placeName').textContent = place.name;
+  document.title = 'SeatNav · ' + place.name;
+  seatList = layout.compartments.flatMap((comp) =>
     comp.seats.flat().filter(Boolean).map((seatId) => ({ seatId, inactive: !!comp.inactive })));
   render();
+  if (params.has('list')) setListOpen(true);
+  if (params.has('places')) setPlacesOpen(true);
   if (DEMO) startDemo();
   else {
     refresh();
     connect();
   }
   startFloor();
-  setInterval(render, 15000);      // keeps "for X min" and the away countdown current
+  setInterval(render, testing ? 5000 : 15000);   // keeps "for X min" current; faster on the test bench
 }
 
 main();

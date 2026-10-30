@@ -1,7 +1,7 @@
 # SeatNav handover
 
-Live map of free study carrels on Feldberg Library's ground floor (Dartmouth ENGS 21, team 28).
-One radar sensor per carrel sends its state to a backend, and a mobile web page shows it on a 3D floor map.
+A live map of free study seats at Dartmouth (ENGS 21, team 28). One radar sensor per seat sends its state to a backend, and a mobile web page shows it on a 3D floor map.
+The audience is students, so wording stays short and jargon-free. Only the test bench shows raw sensor details.
 
 ## How it fits together
 
@@ -10,56 +10,75 @@ ESP32 + LD2410 radar --POST /api/report--> FastAPI (main.py, store.py, SQLite) -
   seatnav_http.ino      X-Device-Key        on Render: engs21-team28.onrender.com         served at /
 ```
 
-- **Firmware** (`seatnav_http.ino`): states FREE → OCCUPIED → AWAY → FREE, with a 30 s heartbeat. The test timings are on; the real Feldberg timings are commented out. `SEAT_ID` must match a seat ID in the layout file.
-- **Backend** (`main.py`, `store.py`): a seat goes OFFLINE after 90 s of silence. `/` serves `static/index.html`, and `/static/*` serves the rest of the frontend. `store.py` still has unused MQTT leftovers (`retained` flags).
+- **Firmware** (`seatnav_http.ino`): states FREE → OCCUPIED → AWAY → FREE, with a 30 s heartbeat. The test timings are on; the real timings are commented out. `SEAT_ID` must match a seat ID in a layout file: `seat-01`…`seat-06` for Feldberg, `test-01` for the test bench.
+- **Backend** (`main.py`, `store.py`): a seat goes OFFLINE after 90 s of silence. `/` serves `static/index.html` and `/static/*` serves the rest of the frontend. The backend doesn't know about places; every sensor reports into one pool, and each place's layout picks out its own seats. `store.py` still has unused MQTT leftovers.
 - **Frontend** (`static/`): plain HTML/JS with no build step. three.js 0.186.1 comes from jsDelivr through the import map in `index.html`.
-  - `index.html`: page shell and all styling. The colour tokens are CSS variables, and `floor.js` reads the `--scene-*` and state colours from them.
-  - `app.js`: loads the layout and live data (REST snapshot plus WebSocket with reconnect), then drives the header counts, list, detail sheet (24 h usage and history), toasts, "Find me a seat" and demo mode. It imports `floor.js` lazily, so the list still works without WebGL.
-  - `floor.js`: the 3D scene, built entirely from the layout file: walls, windows, glass, furniture, carrels, live state visuals, camera presets, taps.
-  - `layout/feldberg-1.json`: **the floor, edited as data.** Coordinates are pixels of `layout/feldberg-1-plan.png`; `metres_per_px` is 0.033.
+  - `index.html`: shell and all CSS. Colour tokens are CSS variables, and `floor.js` reads the `--scene-*` and state colours from them.
+  - `app.js`: the place picker, live data (REST snapshot plus WebSocket), header, list view (tiles), seat sheet, "Find a seat" with watch-and-buzz, toasts, demo mode and test-bench debug details. It imports `floor.js` lazily, so the list works without WebGL.
+  - `floor.js`: the 3D scene, built entirely from a layout file: walls, brick, windows and glass, carpet texture, furniture builders (`BUILD`), carrels, people (`makePerson`), state visuals, camera presets, taps.
+  - `places.json`: the place picker list. Only entries with a `layout` can be opened; the others show "Soon". Testing places are never remembered as the default.
+  - `layout/feldberg-1.json`: the Feldberg ground floor. Coordinates are pixels of `layout/feldberg-1-plan.png`, at 0.033 m per pixel.
+  - `layout/test-bench.json`: one desk and one sensor (`test-01`) for testing and showcasing. Coordinates are in cm; `"testing": true` turns on the debug wording.
   - `cards.html`: the old card dashboard, kept for debugging.
-- **Expo app** (`seatnav-app/`): the earlier native prototype, not the target any more. Expo Go from the App Store stops at SDK 54, and this app is on SDK 57. The reference photos (`i1`–`i9`, `s`, `t` `.jfif`) live in `seatnav-app/assets/` and are untracked.
+- **Expo app** (`seatnav-app/`): the earlier native prototype, no longer the target. Expo Go from the App Store stops at SDK 54, and this app is on SDK 57. The reference photos of the floor are in `seatnav-app/assets/*.jfif`.
 
-## Layout file cheat-sheet (`static/layout/feldberg-1.json`)
+## Layout file cheat-sheet
 
-- `compartments`: 4 carrel blocks (2 columns × 3 rows; `seats` rows run top to bottom as `[west, east]`).
-  - Only blocks **without** `"inactive": true` are live; right now that's the east block nearest Irving, seat-01 to seat-06.
-  - To bring another block online, flash its sensors with those seat IDs and delete `inactive`.
-  - Blocks are spaced 82 px (2.7 m) apart, symmetric about the elevator (x = 414). The user's sketch had about 0.3 m between facing chairs, so the spacing was widened.
-- `furniture`: types `table`, `terminals`, `armchair`, `lounge`, `side_table`, `pillar`, `plant`, `shelves` (`stacks` / `dark` / `reference`) and `counter`. Each builder is in `BUILD` in `floor.js`. Unknown types log a warning.
-- `walls`, `windows`, `glass`: line segments. `outline` is the floor slab. `labels`, `tags` ("Coming soon" pills), `entrances` (arrows) and `carrel_view` (the default camera) complete the file.
-- Grey items in the user's sketch are future sensor areas: the 3 other carrel blocks, the group tables, the study tables and the Bloomberg terminals. They're tagged "Coming soon". Everything else is decoration.
+- `compartments`: blocks of seats with `seats` rows (top to bottom, `[west, east]`).
+  - A block with `"inactive": true` is drawn but shows "Coming soon".
+  - `"panels": false` gives plain desks with no carrel panels.
+  - In Feldberg only the east block (`seat-01`…`seat-06`) is live. The four blocks are 2.7 m apart, centred on the elevator; the original sketch was too tight.
+- `furniture`: types `table`, `terminals`, `armchair`, `lounge`, `side_table`, `pillar`, `plant`, `shelves` (`stacks` / `dark` / `reference`), `counter` (`style: "cabinet"` for dark cabinets), `whiteboard`, `cart`, `book_display`, `garland` and `person` (staff, e.g. the smiling person at the front desk). Each one is a function in `BUILD` in `floor.js`.
+- Other keys:
+  - `walls`, `brick`, `windows` (dark frames) and `glass` (white frames) are line segments.
+  - `outline` is the floor slab.
+  - `labels`, `tags` ("Coming soon" pills) and `entrances` (arrows) add annotations.
+  - `seat_names` gives custom display names.
+  - `carrel_view` is the default camera.
+  - `away_timeout_min` must match the firmware.
 
 ## Run and test
 
 ```
 pip install -r requirements.txt
-uvicorn main:app --port 8000          # open http://localhost:8000  (add ?demo for fake live data)
-curl -X POST localhost:8000/api/report -H "X-Device-Key: dev-key-change-me" -H "Content-Type: application/json" -d '{"seat":"seat-01","state":"FREE"}'
+uvicorn main:app --port 8000          # http://localhost:8000
+curl -X POST localhost:8000/api/report -H "X-Device-Key: dev-key-change-me" -H "Content-Type: application/json" -d '{"seat":"test-01","state":"FREE"}'
 ```
 
-- URL options: `?demo`, `?view=floor|top`, and `?seat=seat-03` (opens that carrel; good for a QR sticker on each desk).
-- **Screenshots:** headless Chrome works with `--headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --window-size=500,1083 --virtual-time-budget=15000 --screenshot=...`. Windows narrower than about 500 px get cropped. Use `--blink-settings=preferredColorScheme=1` for light mode.
+- **URL options:**
+
+| Option | Effect |
+|---|---|
+| `?place=feldberg\|test` | opens that place |
+| `?demo` | fake live data; nothing is sent to the server |
+| `?view=floor\|top` | starts in that camera view |
+| `?seat=seat-03` | opens that seat (for a QR sticker on the desk) |
+| `?list` | opens the list view |
+| `?places` | opens the place picker |
+
+- **Screenshots:** headless Chrome works with `--headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --window-size=500,1083 --virtual-time-budget=15000 --screenshot=...`. Windows narrower than about 500 px get cropped. `--blink-settings=preferredColorScheme=1` gives light mode. Occasionally a run fails to fetch `floor.js` from the CDN; running it again fixes it.
 - On this machine FastAPI is in the user site-packages, so don't run Python with `-I`.
 - Deploy by committing and pushing; Render redeploys. Render's free tier sleeps after 15 min idle and its disk is ephemeral, so the history resets on each deploy.
 
 ## Status (2026-10-30)
 
-**Done and verified in headless Chrome (light and dark):**
-- The whole floor in 3D from the new plan, furniture from the photos, 4 compartments with 1 live.
-- Pins with an icon for each state; a seated person, bag or empty chair as non-colour cues; a glow in the state colour.
-- Header counts, legend, view buttons, "Find me a seat", toasts, demo mode, offline handling.
-- The backend serves everything, and the real API was tested with fake reports.
+**Done and verified in headless Chrome:**
+- The Feldberg floor with 4 compartments (1 live) and furniture modelled on the photos, including the front desk with its staff member, cabinets, glass office and carts.
+- The 3 seats facing the brick wall, and the carpet texture.
+- People with clothes, hair and a face.
+- The place picker (Feldberg live, other Dartmouth libraries and study spaces listed as coming soon, plus a Testing section).
+- The test bench, with debug wording.
+- The list view, short student-facing wording, Find a seat, toasts and demo mode.
 
-**Not yet verified:**
-- Real phones (iOS Safari, Android Chrome): touch gestures, performance, safe areas.
-- Tapping a carrel and the detail sheet, the List view and the no-WebGL fallback (these need a click, which headless screenshots can't do).
+**Not verified:**
+- Real phones (touch, performance, safe areas).
+- Tapping a seat and the seat sheet; the no-WebGL fallback.
+- The place list was partly confirmed online (Baker-Berry, Rauner, Sherman, Matthews-Fuller). The other entries should be checked against https://www.library.dartmouth.edu/visit before launch.
 
-## Next steps (suggested order)
+## Next steps
 
-1. Test on real phones; fix touch and performance issues. If it's slow, consider capping the pixel ratio at 1.5 or turning off shadows on low-end devices.
-2. When the MCUs are installed, put their `SEAT_ID`s into `compartments` and switch firmware to the real timings.
-3. Add a PWA manifest and icon so it can be added to the home screen. True push alerts for "watching" need a service worker; right now it only buzzes while the page is open.
-4. Add a QR code poster at the Irving entrance (`/?view=carrels`) and per-carrel stickers (`/?seat=seat-0N`).
-5. Clean-up: remove the MQTT leftovers in `store.py`; tighten CORS before going public; set a real `DEVICE_KEYS` on Render.
-6. Busy-times chart: `/api/seats/{id}/usage` already exists. A per-hour aggregate endpoint would allow a "usually free at 3 pm" hint.
+1. Test on real phones and tune: cap the pixel ratio and turn shadows off on low-end devices if needed.
+2. When the sensors are installed, flash their `SEAT_ID`s to match the layouts and switch the firmware to the real timings.
+3. Add a PWA manifest and icon (add to home screen); real push alerts for "watching" need a service worker.
+4. Add QR posters (`/?place=feldberg`) and per-seat stickers (`/?seat=seat-0N`).
+5. Clean-up: remove the MQTT leftovers in `store.py`, tighten CORS, and set a real `DEVICE_KEYS` on Render.

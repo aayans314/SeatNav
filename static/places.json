@@ -1,0 +1,33 @@
+{
+  "about": "Places in the picker. Only entries with a \"layout\" can be opened; the rest show as coming soon.",
+  "default": "feldberg",
+  "groups": [
+    {
+      "title": "Libraries",
+      "places": [
+        { "id": "feldberg", "name": "Feldberg Library", "detail": "Business & Engineering · Floor 1", "layout": "/static/layout/feldberg-1.json" },
+        { "id": "baker-berry", "name": "Baker-Berry Library", "detail": "Main library" },
+        { "id": "rauner", "name": "Rauner Special Collections", "detail": "Reading room" },
+        { "id": "sherman", "name": "Sherman Art Library", "detail": "Carpenter Hall" },
+        { "id": "paddock", "name": "Paddock Music Library", "detail": "Hopkins Center" },
+        { "id": "matthews-fuller", "name": "Matthews-Fuller Health Sciences Library", "detail": "Dartmouth Hitchcock, Lebanon" }
+      ]
+    },
+    {
+      "title": "Study spaces",
+      "places": [
+        { "id": "novack", "name": "Novack Café", "detail": "Baker-Berry" },
+        { "id": "collis", "name": "Collis Center", "detail": "Student center" },
+        { "id": "kemeny", "name": "Kemeny Hall", "detail": "Mathematics" },
+        { "id": "ecsc", "name": "ECSC", "detail": "Engineering & Computer Science Center" }
+      ]
+    },
+    {
+      "title": "Testing",
+      "testing": true,
+      "places": [
+        { "id": "test", "name": "Sensor test bench", "detail": "One seat · for testing and demos", "layout": "/static/layout/test-bench.json", "testing": true }
+      ]
+    }
+  ]
+}

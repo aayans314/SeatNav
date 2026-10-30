@@ -17,9 +17,6 @@
     [[435, 190], [526, 190]],
     [[552, 190], [648, 190]],
     [[706, 190], [767, 190]],
-    [[839, 351], [936, 351]],
-    [[966, 351], [1069, 351]],
-    [[1318, 355], [1467, 355]],
     [[284, 406], [572, 406]],
     [[630, 406], [1111, 406]],
     [[1162, 406], [1191, 406]],
@@ -42,11 +39,9 @@
     [[564, 34], [564, 192]],
     [[680, 83], [680, 191]],
     [[764, 34], [764, 191]],
-    [[840, 349], [840, 407]],
     [[864, 34], [864, 165]],
     [[956, 34], [956, 165]],
     [[1049, 34], [1049, 165]],
-    [[1068, 349], [1068, 407]],
     [[1081, 553], [1081, 578]],
     [[1081, 633], [1081, 668]],
     [[1146, 34], [1146, 192]],
@@ -60,7 +55,11 @@
     [[1191, 406], [1229, 561]]
   ],
   "windows": [[ [1143, 84], [1426, 84]],
-    [[1425, 83], [1425, 356]]
+    [[1425, 83], [1425, 356]],
+    [[839, 351], [936, 351]],
+    [[966, 351], [1069, 351]],
+    [[840, 349], [840, 407]],
+    [[1068, 349], [1068, 407]]
   ],
   "glass": [[ [763, 164], [831, 164]],
     [[896, 164], [1015, 164]],
@@ -77,97 +76,31 @@
     }
   ],
   "labels": [
-    {
-      "text": "101H Conference Room",
-      "at": [149, 157]
-    },
-    {
-      "text": "Restrooms",
-      "at": [362, 106]
-    },
-    {
-      "text": "Elevator",
-      "at": [415, 155]
-    },
-    {
-      "text": "Stacks",
-      "at": [428, 375]
-    },
-    {
-      "text": "Access Service Desk",
-      "at": [953, 330]
-    },
-    {
-      "text": "Stairs down",
-      "at": [942, 480]
-    },
-    {
-      "text": "Reference",
-      "at": [1190, 222]
-    },
-    {
-      "text": "Bloomberg Terminals",
-      "at": [1330, 548]
-    },
-    {
-      "text": "Murdough",
-      "at": [1122, 517]
-    }
+    { "text": "101H Conference Room", "at": [149, 157] },
+    { "text": "Restrooms", "at": [362, 106] },
+    { "text": "Elevator", "at": [415, 155] },
+    { "text": "Stacks", "at": [428, 375] },
+    { "text": "Access Service Desk", "at": [953, 330] },
+    { "text": "Stairs down", "at": [942, 480] },
+    { "text": "Reference", "at": [1190, 222] },
+    { "text": "Bloomberg Terminals", "at": [1330, 548] },
+    { "text": "Murdough", "at": [1122, 517] }
   ],
   "tags": [
-    {
-      "text": "Sensors coming soon",
-      "at": [373, 225]
-    },
-    {
-      "text": "Coming soon",
-      "at": [705, 225]
-    },
-    {
-      "text": "Coming soon",
-      "at": [1300, 215]
-    },
-    {
-      "text": "Coming soon",
-      "at": [1330, 420]
-    }
+    { "text": "Sensors coming soon", "at": [373, 225] },
+    { "text": "Coming soon", "at": [705, 225] },
+    { "text": "Coming soon", "at": [1300, 215] },
+    { "text": "Coming soon", "at": [1330, 420] }
   ],
   "entrances": [
-    {
-      "name": "To Irving",
-      "at": [602, 384],
-      "dir": "south"
-    },
-    {
-      "name": "To Byrne",
-      "at": [1433, 609],
-      "dir": "east"
-    }
+    { "name": "To Irving", "at": [602, 384], "dir": "south" },
+    { "name": "To Byrne", "at": [1433, 609], "dir": "east" }
   ],
   "compartments": [
-    {
-      "id": "carrels-19",
-      "box": [267, 235, 315, 345],
-      "seats": [["seat-19", "seat-20"], ["seat-21", "seat-22"], ["seat-23", "seat-24"]],
-      "inactive": true
-    },
-    {
-      "id": "carrels-13",
-      "box": [349, 235, 397, 345],
-      "seats": [["seat-13", "seat-14"], ["seat-15", "seat-16"], ["seat-17", "seat-18"]],
-      "inactive": true
-    },
-    {
-      "id": "carrels-07",
-      "box": [431, 235, 479, 345],
-      "seats": [["seat-07", "seat-08"], ["seat-09", "seat-10"], ["seat-11", "seat-12"]],
-      "inactive": true
-    },
-    {
-      "id": "carrels-01",
-      "box": [513, 235, 561, 345],
-      "seats": [["seat-01", "seat-02"], ["seat-03", "seat-04"], ["seat-05", "seat-06"]]
-    }
+    { "id": "carrels-19", "box": [267, 235, 315, 345], "seats": [["seat-19", "seat-20"], ["seat-21", "seat-22"], ["seat-23", "seat-24"]], "inactive": true },
+    { "id": "carrels-13", "box": [349, 235, 397, 345], "seats": [["seat-13", "seat-14"], ["seat-15", "seat-16"], ["seat-17", "seat-18"]], "inactive": true },
+    { "id": "carrels-07", "box": [431, 235, 479, 345], "seats": [["seat-07", "seat-08"], ["seat-09", "seat-10"], ["seat-11", "seat-12"]], "inactive": true },
+    { "id": "carrels-01", "box": [513, 235, 561, 345], "seats": [["seat-01", "seat-02"], ["seat-03", "seat-04"], ["seat-05", "seat-06"]] }
   ],
   "furniture": [
     { "type": "table", "at": [660, 272], "size_m": [2.6, 1.2], "rot_deg": 90, "seats": [3, 3], "base": "panel" },
@@ -197,9 +130,8 @@
     { "type": "lounge", "at": [1408, 136], "facing": "west", "seats": 3 },
     { "type": "pillar", "at": [1328, 188], "size_m": 0.6 },
     { "type": "armchair", "at": [1363, 190], "facing": "north" },
-    { "type": "table", "at": [1376, 255], "size_m": [2.7, 0.9], "seats": [3, 3], "base": "legs" },
-    { "type": "table", "at": [1376, 322], "size_m": [2.7, 0.9], "seats": [0, 3], "base": "legs" },
-    { "type": "shelves", "style": "dark", "line": [[1305, 346], [1415, 346]], "depth_m": 0.35, "height_m": 1.8 },
+    { "type": "table", "at": [1376, 247], "size_m": [2.7, 0.9], "seats": [3, 3], "base": "legs" },
+    { "type": "table", "at": [1376, 312], "size_m": [2.7, 0.9], "seats": [3, 3], "base": "legs" },
     { "type": "shelves", "style": "dark", "line": [[1154, 135], [1154, 200]], "depth_m": 0.35, "height_m": 1.8 },
     { "type": "pillar", "at": [1342, 388], "size_m": 0.6 },
     { "type": "lounge", "at": [1432, 384], "facing": "west" },
@@ -213,11 +145,27 @@
     { "type": "counter", "line": [[858, 312], [858, 276], [1048, 276], [1048, 312]], "depth_m": 0.6 },
     { "type": "plant", "at": [1410, 93] },
     { "type": "plant", "at": [1238, 318], "on_m": 1.1 },
-    { "type": "plant", "at": [1178, 240], "on_m": 1.1 }
+    { "type": "plant", "at": [1178, 240], "on_m": 1.1 },
+    { "type": "shelves", "style": "dark", "line": [[1392, 345], [1421, 345]], "depth_m": 0.35, "height_m": 1.8 },
+    { "type": "whiteboard", "line": [[1333, 343], [1368, 343]] },
+    { "type": "table", "at": [953, 298], "size_m": [5.0, 0.55], "seats": [0, 0], "base": "legs", "top": "dark" },
+    { "type": "person", "at": [953, 314], "facing": "north", "seed": 3 },
+    { "type": "counter", "style": "cabinet", "line": [[848, 341], [926, 341]], "depth_m": 0.5, "height_m": 0.95 },
+    { "type": "counter", "style": "cabinet", "line": [[976, 341], [1060, 341]], "depth_m": 0.5, "height_m": 0.95 },
+    { "type": "shelves", "style": "dark", "line": [[850, 397], [1058, 397]], "depth_m": 0.35, "height_m": 1.8 },
+    { "type": "book_display", "line": [[880, 270], [1030, 270]], "on_m": 1.05 },
+    { "type": "book_display", "line": [[985, 341], [1055, 341]], "on_m": 0.95 },
+    { "type": "garland", "line": [[860, 265], [1046, 265]], "y_m": 0.9 },
+    { "type": "plant", "at": [905, 276], "on_m": 1.05 },
+    { "type": "plant", "at": [1048, 300], "on_m": 1.05 },
+    { "type": "cart", "at": [846, 326], "color": "black", "rot_deg": 90 },
+    { "type": "cart", "at": [1062, 326], "color": "yellow", "rot_deg": 90 }
   ],
   "carrel_view": {
     "box": [255, 215, 610, 420],
     "theta_deg": 68,
     "polar_deg": 52
-  }
+  },
+  "brick": [[ [1318, 355], [1467, 355]]
+  ]
 }

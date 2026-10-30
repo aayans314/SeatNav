@@ -85,14 +85,79 @@ function chairGeometries() {
   return { seat: merge([seat]), frame: merge([back, brace, post, base]) };
 }
 
-function personGeometry() {
-  const torso = new THREE.CapsuleGeometry(0.15, 0.3, 4, 12).rotateZ(0.12).translate(0.02, 0.88, 0);
-  const head = new THREE.SphereGeometry(0.105, 16, 12).translate(-0.05, 1.3, 0);
-  const thighs = new THREE.BoxGeometry(0.42, 0.13, 0.32).translate(-0.17, 0.58, 0);
-  const shins = new THREE.BoxGeometry(0.11, 0.44, 0.28).translate(-0.36, 0.3, 0);
-  const armL = new THREE.CapsuleGeometry(0.045, 0.4, 4, 8).rotateZ(-1.0).translate(-0.175, 0.95, 0.2);
-  const armR = armL.clone().translate(0, 0, -0.4);
-  return merge([torso, head, thighs, shins, armL, armR]);
+// ---------- people: seated, looking towards -x, hands on the desk ----------
+
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+
+function limb(radius, a, b) {
+  // a capsule from point a to point b
+  const dir = b.clone().sub(a);
+  const g = new THREE.CapsuleGeometry(radius, Math.max(dir.length(), 0.001), 4, 8);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), dir.normalize()));
+  return g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+}
+
+function faceTexture(skin) {
+  // wraps round the head; the middle of the canvas becomes the face
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = skin;
+  g.fillRect(0, 0, 256, 128);
+  g.fillStyle = '#2b2220';
+  for (const x of [119, 137]) {
+    g.beginPath();
+    g.ellipse(x, 56, 3.5, 5, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.strokeStyle = '#7a2e2a';
+  g.lineWidth = 3;
+  g.lineCap = 'round';
+  g.beginPath();
+  g.arc(128, 66, 9, 0.2 * Math.PI, 0.8 * Math.PI);   // smile
+  g.stroke();
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+const SKIN = ['#f1c7a3', '#e0ac7e', '#b97f55', '#8a5a3b', '#5e3b26'];
+const SHIRT = [0x3d6fa3, 0xc8553d, 0x4f8a5b, 0xd8a33f, 0x6c5ba3, 0x2f3a46, 0xb04a7a];
+const HAIR = [0x2b1d16, 0x111111, 0x5a3820, 0x8f6236, 0x3a2a22];
+
+function makePerson(seed = 0) {
+  const pick = (list, k) => list[(seed * 7 + k * 3) % list.length];
+  const skin = pick(SKIN, 1);
+  const std = (color, roughness = 0.85) => new THREE.MeshStandardMaterial({ color, roughness });
+  const materials = {
+    shirt: std(pick(SHIRT, 2)),
+    pants: std(0x2c3442, 0.9),
+    skin: std(skin, 0.7),
+    face: new THREE.MeshStandardMaterial({ map: faceTexture(skin), roughness: 0.7 }),
+    hair: std(pick(HAIR, 3), 0.9),
+    shoes: std(0x1d1f22, 0.6),
+  };
+  const parts = { shirt: [], pants: [], skin: [], face: [], hair: [], shoes: [] };
+  parts.shirt.push(limb(0.15, V(0.05, 0.66, 0), V(0, 0.98, 0)), limb(0.07, V(0, 1.04, -0.16), V(0, 1.04, 0.16)));
+  for (const s of [-1, 1]) {
+    parts.shirt.push(limb(0.055, V(0, 1.03, s * 0.2), V(-0.1, 0.83, s * 0.22)));        // upper arm
+    parts.shirt.push(limb(0.045, V(-0.1, 0.83, s * 0.22), V(-0.36, 0.8, s * 0.15)));    // forearm
+    parts.skin.push(new THREE.SphereGeometry(0.045, 10, 8).translate(-0.4, 0.8, s * 0.14));
+    parts.pants.push(limb(0.075, V(0.03, 0.57, s * 0.1), V(-0.36, 0.57, s * 0.1)));      // thigh
+    parts.pants.push(limb(0.06, V(-0.38, 0.55, s * 0.1), V(-0.4, 0.1, s * 0.1)));        // shin
+    parts.shoes.push(new THREE.BoxGeometry(0.22, 0.07, 0.1).translate(-0.45, 0.035, s * 0.1));
+  }
+  parts.skin.push(limb(0.045, V(-0.01, 1.1, 0), V(-0.02, 1.2, 0)));                     // neck
+  parts.face.push(new THREE.SphereGeometry(0.1, 24, 16).rotateY(Math.PI).translate(-0.03, 1.29, 0));
+  parts.hair.push(new THREE.SphereGeometry(0.107, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.4).translate(-0.015, 1.3, 0));
+  const person = new THREE.Group();
+  for (const [key, list] of Object.entries(parts)) {
+    const mesh = new THREE.Mesh(merge(list), materials[key]);
+    mesh.castShadow = true;
+    person.add(mesh);
+  }
+  return person;
 }
 
 function laptopGeometry() {
@@ -113,6 +178,28 @@ function glowTexture() {
   g.fillRect(0, 0, 128, 128);
   const texture = new THREE.CanvasTexture(c);
   texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function carpetTexture() {
+  // the library's streaky charcoal carpet: light streaks on white, tinted by the floor colour
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, 256, 256);
+  let seed = 11;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 700; i++) {
+    const shade = Math.floor(120 + rnd() * 110);
+    g.fillStyle = 'rgba(' + shade + ',' + shade + ',' + shade + ',0.45)';
+    g.fillRect(rnd() * 256, rnd() * 256, 8 + rnd() * 50, 1 + rnd() * 2.5);
+  }
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(0.4, 0.4);              // floor UVs are in metres, so one tile per 2.5 m
+  texture.anisotropy = 4;
   return texture;
 }
 
@@ -221,7 +308,7 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
 
   const std = (color, roughness, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, ...extra });
   const mat = {
-    floor: std(0xffffff, 0.95),
+    floor: std(0xffffff, 0.95, { map: carpetTexture() }),
     slab: std(0xffffff, 1),
     carpet: std(0xffffff, 1),
     wall: std(0xffffff, 0.9),
@@ -244,6 +331,11 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     leaf: std(0x4f9d3a, 0.8),
     glass: std(0xbfdbe8, 0.1, { transparent: true, opacity: 0.32, depthWrite: false }),
     frost: std(0xe8f0ee, 0.3, { transparent: true, opacity: 0.6, depthWrite: false }),
+    brick: std(0x9a4a35, 0.95),
+    cabinet: std(0x474c52, 0.55),                  // dark grey cabinets and counter tops
+    board: std(0xf4f6f6, 0.3),
+    yellow: std(0xe0b52a, 0.6),
+    lantern: std(0xd2452f, 0.6),
     hit: new THREE.MeshBasicMaterial({ visible: false }),
     arrow: new THREE.MeshBasicMaterial({ toneMapped: false }),
   };
@@ -311,7 +403,13 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     return { length: a.distanceTo(b), angle: -Math.atan2(b.z - a.z, b.x - a.x), mid: a.clone().add(b).multiplyScalar(0.5) };
   }
 
-  // big windows with dark frames (north-east corner) and glass office fronts with white frames;
+  for (const [p0, p1] of layout.brick || []) {
+    const { length, angle, mid } = segment(p0, p1);
+    building.box(mat.brick, length + WALL_T, WALL_H, WALL_T * 1.6, mid.x, WALL_H / 2, mid.z, angle);
+    wallTops.box(mat.wallTop, length + WALL_T, 0.012, WALL_T * 1.6 + 0.004, mid.x, WALL_H + 0.006, mid.z, angle);
+  }
+
+  // big windows and glass offices with dark frames, and glass office fronts with white frames;
   // glass goes in the no-shadow batch so it doesn't darken the floor
   for (const [list, sill, frame] of [[layout.windows || [], 0.45, mat.dark], [layout.glass || [], 0.25, mat.wall]]) {
     for (const [p0, p1] of list) {
@@ -385,7 +483,6 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
   // ---------- carrels ----------
 
   const chair = chairGeometries();
-  const personGeo = personGeometry();
   const laptopGeo = laptopGeometry();
   const bagGeo = new RoundedBoxGeometry(0.2, 0.36, 0.3, 2, 0.06);
   const lampHeadGeo = new THREE.BoxGeometry(0.26, 0.025, 0.055);
@@ -407,12 +504,14 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     const parts = new Batch();
     const { fabric, wood, metal, dark } = mat;   // compartments without sensors look the same, minus lights and pins
 
-    parts.box(fabric, SPINE_T, PANEL_H, length + PANEL_T, 0, PANEL_H / 2, 0);
-    for (let i = 0; i <= comp.seats.length; i++) {
-      const z = -length / 2 + i * rowW;
-      for (const side of [-1, 1]) {
-        parts.box(fabric, PART_DEPTH, PANEL_H - 0.02, PANEL_T, side * PART_DEPTH / 2, (PANEL_H - 0.02) / 2, z);
-        parts.box(wood, 0.06, PANEL_H + 0.01, 0.07, side * PART_DEPTH, (PANEL_H + 0.01) / 2, z);
+    if (comp.panels !== false) {           // "panels": false gives plain desks (the test bench)
+      parts.box(fabric, SPINE_T, PANEL_H, length + PANEL_T, 0, PANEL_H / 2, 0);
+      for (let i = 0; i <= comp.seats.length; i++) {
+        const z = -length / 2 + i * rowW;
+        for (const side of [-1, 1]) {
+          parts.box(fabric, PART_DEPTH, PANEL_H - 0.02, PANEL_T, side * PART_DEPTH / 2, (PANEL_H - 0.02) / 2, z);
+          parts.box(wood, 0.06, PANEL_H + 0.01, 0.07, side * PART_DEPTH, (PANEL_H + 0.01) / 2, z);
+        }
       }
     }
 
@@ -447,6 +546,8 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
   const leaves = merge([0, 1, 2, 3, 4, 5].map((i) =>
     new THREE.ConeGeometry(0.05, 0.5, 4).translate(0, 0.25, 0).rotateZ(0.6).rotateY(i * 1.05)));
 
+  const bookMats = ['#2f4b7c', '#c9a227', '#3e6b4a', '#b85c38', '#e8e2d4', '#7d2e2b', '#4a3f6b'].map((c) => std(c, 0.8));
+
   const turn = (lx, lz, a) => [lx * Math.cos(a) + lz * Math.sin(a), -lx * Math.sin(a) + lz * Math.cos(a)];
   function part(p, a, material, lx, y, lz, w, h, d) {
     const [ox, oz] = turn(lx, lz, a);
@@ -463,7 +564,7 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     table(f, p, a) {
       const [w, d] = f.size_m || [1.6, 0.8];
       const [south, north] = f.seats || [0, 0];
-      part(p, a, f.top === 'light' ? mat.counter : mat.wood, 0, 0.74, 0, w, 0.05, d);
+      part(p, a, ({ light: mat.counter, dark: mat.cabinet })[f.top] || mat.wood, 0, 0.74, 0, w, 0.05, d);
       if (f.base === 'panel') {
         for (const s of [-1, 1]) part(p, a, mat.wood, s * (w / 2 - 0.05), 0.36, 0, 0.05, 0.72, d - 0.12);
         part(p, a, mat.wood, 0, 0.42, 0, w - 0.12, 0.55, 0.04);
@@ -539,14 +640,64 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
         scene.add(shelf);
       }
     },
-    // service counter: wood top on a light body, along a line
+    // front desk counter (cherry front, dark top), or low dark storage cabinets with "style": "cabinet"
     counter(f) {
       const d = f.depth_m || 0.6;
+      const h = f.height_m || 1.05;
+      const body = f.style === 'cabinet' ? mat.cabinet : mat.wood;
       for (let i = 0; i + 1 < f.line.length; i++) {
         const { length, angle, mid } = segment(f.line[i], f.line[i + 1]);
-        deco.box(mat.counter, length + d, 1.0, d, mid.x, 0.5, mid.z, angle);
-        deco.box(mat.wood, length + d + 0.04, 0.05, d + 0.08, mid.x, 1.03, mid.z, angle);
+        deco.box(body, length + d, h - 0.04, d, mid.x, (h - 0.04) / 2, mid.z, angle);
+        deco.box(f.style === 'cabinet' ? mat.dark : mat.cabinet, length + d + 0.04, 0.04, d + 0.06, mid.x, h - 0.02, mid.z, angle);
       }
+    },
+    // rolling whiteboard along a short line
+    whiteboard(f) {
+      const { length, angle, mid } = segment(f.line[0], f.line[1]);
+      deco.box(mat.board, length, 0.9, 0.03, mid.x, 1.35, mid.z, angle);
+      for (const t of [-0.5, 0.5]) {
+        deco.box(mat.metal, 0.04, 1.8, 0.04, mid.x + Math.cos(-angle) * t * length, 0.9, mid.z + Math.sin(-angle) * t * length, angle);
+      }
+    },
+    // book cart ("color": "yellow" or black)
+    cart(f, p, a) {
+      part(p, a, f.color === 'yellow' ? mat.yellow : mat.dark, 0, 0.5, 0, 0.75, 0.86, 0.38);
+      part(p, a, mat.metal, 0, 0.04, 0, 0.7, 0.04, 0.34);
+    },
+    // a row of standing books on a counter or cabinet top ("on_m" is the surface height)
+    book_display(f) {
+      const y = f.on_m || 1.05;
+      for (let i = 0; i + 1 < f.line.length; i++) {
+        const { length, angle, mid } = segment(f.line[i], f.line[i + 1]);
+        const n = Math.floor(length / 0.22);
+        for (let k = 0; k < n; k++) {
+          const t = ((k + 0.5) / n - 0.5) * length;
+          const h = 0.2 + ((k * 7) % 4) * 0.025;
+          deco.box(bookMats[(k * 5 + i) % bookMats.length], 0.17, h, 0.035, mid.x + Math.cos(-angle) * t, y + h / 2, mid.z + Math.sin(-angle) * t, angle);
+        }
+      }
+    },
+    // paper lanterns strung along the front of the desk
+    garland(f) {
+      const y = f.y_m || 0.85;
+      for (let i = 0; i + 1 < f.line.length; i++) {
+        const { length, angle, mid } = segment(f.line[i], f.line[i + 1]);
+        const n = Math.floor(length / 0.3);
+        for (let k = 0; k <= n; k++) {
+          const t = (k / n - 0.5) * length;
+          const sag = 0.08 * Math.sin(Math.PI * ((k % 4) / 4));
+          deco.add(mat.lantern, new THREE.SphereGeometry(0.04, 8, 6).translate(mid.x + Math.cos(-angle) * t, y - sag, mid.z + Math.sin(-angle) * t));
+        }
+      }
+    },
+    // someone sitting on an office chair (e.g. staff at the front desk)
+    person(f, p) {
+      const look = FACING[f.facing] ?? 0;
+      officeChair(p, 0, 0, 0, look);
+      const someone = makePerson(f.seed || 0);
+      someone.position.set(p.x, 0, p.z);
+      someone.rotation.y = look;
+      scene.add(someone);
     },
   };
 
@@ -580,10 +731,10 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
 
     if (ghost) return c;
 
-    c.person = new THREE.Mesh(personGeo, mat.person);
+    c.person = makePerson(hitBoxes.length);
     c.bag = new THREE.Mesh(bagGeo, mat.bag);
     c.bag.position.set(0.07, 0.69, 0);
-    c.person.castShadow = c.bag.castShadow = true;
+    c.bag.castShadow = true;
     c.chair.add(c.person, c.bag);
 
     c.laptop = new THREE.Mesh(laptopGeo, mat.laptop);
