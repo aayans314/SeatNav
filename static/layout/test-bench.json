@@ -21,6 +21,7 @@
   "seat_names": {
     "test-01": "Test seat"
   },
+  "rugs": [{ "at": [250, 200], "size_m": [2.6, 2.0], "color": "#c9734f" }],
   "furniture": [
     { "type": "plant", "at": [450, 50] },
     { "type": "whiteboard", "line": [[120, 12], [220, 12]] }
