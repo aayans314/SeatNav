@@ -7,7 +7,7 @@ The audience is students, so wording stays short and jargon-free. Only the test 
 
 ```
 ESP32 + LD2410 radar --POST /api/report--> FastAPI (main.py, store.py, SQLite) --/api/seats + WS /ws--> static/ (3D web page)
-  seatnav_http.ino      X-Device-Key        on Render: engs21-team28.onrender.com         served at /
+  seatnav_http.ino      X-Device-Key        on Render: seatnav.onrender.com         served at /
 ```
 
 - **Firmware** (`seatnav_http.ino`): states FREE → OCCUPIED → AWAY → FREE, with a 30 s heartbeat. The test timings are on; the real timings are commented out. `SEAT_ID` must match a seat ID in a layout file: `seat-01`…`seat-06` for Feldberg, `test-01` for the test bench.

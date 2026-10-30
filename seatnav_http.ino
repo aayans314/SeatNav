@@ -50,7 +50,7 @@ const char* WIFI_PASSWORD = "";
 //   "http://<your laptop's IP on the hotspot>:8000/api/report"
 // After deploying:
 //   "https://<your-app>.onrender.com/api/report"
-const char* REPORT_URL = "https://engs21-team28.onrender.com/api/report";
+const char* REPORT_URL = "https://seatnav.onrender.com/api/report";
 const char* DEVICE_KEY = DEVICE_KEYS;   // must match DEVICE_KEYS on the server
 
 #define SEAT_ID "seat-01"                        // give every sensor its own ID (letters, numbers, - and _)
