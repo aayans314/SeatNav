@@ -770,6 +770,7 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
   // ---------- closed rooms (no seats): blank grey blocks, curtains behind any glass fronts ----------
 
   const ROOM_H = 1.9;
+  const ROOM_T = WALL_T + 0.03;                    // thicker than the old walls under them, so their faces don't flicker
   const sheer = new Batch();                       // glass and curtains: no shadows
   for (const room of layout.rooms || []) {
     const pts = room.outline;
@@ -778,7 +779,7 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
       const p1 = pts[(i + 1) % pts.length];
       const { length, angle, mid } = segment(p0, p1);
       if (!(room.curtain_edges || []).includes(i)) {
-        deco.box(mat.roomWall, length + WALL_T, ROOM_H, WALL_T, mid.x, ROOM_H / 2, mid.z, angle);
+        deco.box(mat.roomWall, length + ROOM_T, ROOM_H, ROOM_T, mid.x, ROOM_H / 2, mid.z, angle);
         return;
       }
       // glass front: sill, posts and header, a pane, and curtains just inside
