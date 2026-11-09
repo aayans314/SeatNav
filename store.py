@@ -2,16 +2,21 @@
 SeatNav storage: keeps the current state of every seat plus a history of changes.
 Used by main.py; plain Python + SQLite, no extra libraries.
 
-Two tables:
-  seats   one row per seat, always the latest values (what the app shows right now)
-  events  one row per state change or online/offline change (history, usage stats)
+Tables:
+  seats    one row per seat, always the latest values (what the app shows right now)
+  events   one row per state change or online/offline change (history, usage stats)
+  reports  every report a sensor sends, heartbeats included (raw data for analysis)
+  meta     a random id for this database, so a data collector can tell when the
+           database was replaced (Render's disk is wiped on every restart)
 
-Heartbeats only refresh the seats row; they don't add history rows, so the
-database stays small even with many sensors.
+Heartbeats refresh the seats row and add a reports row; they don't add events.
+The reports table grows by about 2 rows per sensor per minute (~3k per sensor per day).
 """
 
+import secrets
 import sqlite3
 import threading
+import time
 
 VALID_STATES = ("FREE", "OCCUPIED", "AWAY")
 
@@ -42,6 +47,26 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_seat_ts ON events (seat_id, ts);
+
+CREATE TABLE IF NOT EXISTS reports (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts        REAL NOT NULL,
+    seat_id   TEXT NOT NULL,
+    state     TEXT NOT NULL,
+    near      INTEGER,
+    moving_cm INTEGER,   -- NULL when the radar sees no moving target
+    still_cm  INTEGER,   -- NULL when the radar sees no still target
+    rssi      INTEGER,
+    reason    TEXT,      -- boot / change / heartbeat
+    uptime_s  INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_reports_ts ON reports (ts);
+
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -60,9 +85,43 @@ class Store:
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        # Created once per database file; kept if the file survives a restart.
+        self.db.execute(
+            "INSERT OR IGNORE INTO meta (key, value) VALUES ('db_id', ?), ('db_created', ?)",
+            (secrets.token_hex(8), repr(time.time())),
+        )
         self.db.commit()
+        meta = dict(self.db.execute("SELECT key, value FROM meta").fetchall())
+        self.db_id = meta["db_id"]
+        self.db_created = float(meta["db_created"])
 
     # ---------- writing ----------
+
+    def log_report(self, seat_id, data, now):
+        """Keep the raw report (heartbeats included) for later analysis."""
+        uptime = data.get("uptime_s")
+        with self.lock:
+            try:
+                self.db.execute(
+                    """INSERT INTO reports (ts, seat_id, state, near, moving_cm, still_cm,
+                                            rssi, reason, uptime_s)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        now,
+                        seat_id,
+                        str(data.get("state", "")).upper(),
+                        1 if data.get("near") else 0,
+                        _int_or_none(data.get("moving_cm")),
+                        _int_or_none(data.get("still_cm")),
+                        _int_or_none(data.get("rssi")),
+                        str(data.get("reason", ""))[:32],
+                        uptime if isinstance(uptime, int) else None,
+                    ),
+                )
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                raise
 
     def handle_state(self, seat_id, data, now, retained=False):
         """Process a message from <prefix>/seats/<seat_id>/state.
@@ -235,6 +294,27 @@ class Store:
                 (seat_id, since),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def get_log(self, reports_after, events_after, limit):
+        """Reports and events with an id above the given ones, oldest first.
+        A collector passes back the highest ids it has seen to get only new rows."""
+        with self.lock:
+            reports = self.db.execute(
+                "SELECT * FROM reports WHERE id > ? ORDER BY id LIMIT ?", (reports_after, limit)
+            ).fetchall()
+            events = self.db.execute(
+                "SELECT * FROM events WHERE id > ? ORDER BY id LIMIT ?", (events_after, limit)
+            ).fetchall()
+        return [dict(r) for r in reports], [dict(r) for r in events]
+
+    def rows_since(self, table, since):
+        """All rows of 'reports' or 'events' with ts >= since, oldest first (for CSV export)."""
+        if table not in ("reports", "events"):
+            raise ValueError(table)
+        with self.lock:
+            cur = self.db.execute(f"SELECT * FROM {table} WHERE ts >= ? ORDER BY id", (since,))
+            columns = [c[0] for c in cur.description]
+            return columns, cur.fetchall()
 
     def get_usage(self, seat_id, since, now):
         """Seconds and percent of time spent in each state between `since` and `now`.

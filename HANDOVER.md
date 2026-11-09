@@ -11,7 +11,8 @@ ESP32 + LD2410 radar --POST /api/report--> FastAPI (main.py, store.py, SQLite) -
 ```
 
 - **Firmware** (`seatnav_http.ino`): states FREE → OCCUPIED → AWAY → FREE, with a 30 s heartbeat. The test timings are on; the real timings are commented out. `SEAT_ID` must match a seat ID in a layout file: `seat-01`…`seat-06` for Feldberg, `test-01` for the test bench.
-- **Backend** (`main.py`, `store.py`): a seat goes OFFLINE after 90 s of silence. `/` serves `static/index.html` and `/static/*` serves the rest of the frontend. The backend doesn't know about places; every sensor reports into one pool, and each place's layout picks out its own seats. `store.py` still has unused MQTT leftovers.
+- **Backend** (`main.py`, `store.py`): a seat goes OFFLINE after 90 s of silence. `/` serves `static/index.html` and `/static/*` serves the rest of the frontend. The backend doesn't know about places; every sensor reports into one pool, and each place's layout picks out its own seats. Every raw report (heartbeats too) is kept in a `reports` table for analysis. `store.py` still has unused MQTT leftovers.
+- **Data collector** (`tools/collector.py`): copies everything from `GET /api/log` into `data/collected.db` every 20 s, because Render wipes its disk on each restart. See "Collecting data" below.
 - **Frontend** (`static/`): plain HTML/JS with no build step. three.js 0.186.1 comes from jsDelivr through the import map in `index.html`.
   - `index.html`: shell and all CSS. Colour tokens are CSS variables, and `floor.js` reads the `--scene-*` and state colours from them.
   - `app.js`: the place picker, live data (REST snapshot plus WebSocket), header, list view (tiles), seat sheet, "Find a seat" with watch-and-buzz, toasts, demo mode and test-bench debug details. It imports `floor.js` lazily, so the list works without WebGL.
@@ -65,6 +66,20 @@ curl -X POST localhost:8000/api/report -H "X-Device-Key: dev-key-change-me" -H "
 - **Screenshots:** headless Chrome works with `--headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --window-size=500,1083 --virtual-time-budget=15000 --screenshot=...`. Windows narrower than about 500 px get cropped. `--blink-settings=preferredColorScheme=1` gives light mode. Occasionally a run fails to fetch `floor.js` from the CDN; running it again fixes it.
 - On this machine FastAPI is in the user site-packages, so don't run Python with `-I`.
 - Deploy by committing and pushing; Render redeploys. Render's free tier sleeps after 15 min idle and its disk is ephemeral, so the history resets on each deploy.
+
+## Collecting data
+
+```
+python tools/collector.py run       # keep running; copies new rows every 20 s (log: data/collected.log)
+python tools/collector.py status    # last successful poll, rows per seat, backend restarts seen
+python tools/collector.py export    # data/export/: reports, events, intervals (timelines), hourly (% taken)
+```
+
+- Standard library only; one collector at a time (lock file). It also asks Windows not to idle-sleep while it runs.
+- If this computer sleeps or goes offline, nothing is lost: the backend keeps every row since its last restart, and the collector catches up. Data is lost only if Render restarts while the collector isn't running.
+- `GET /api/export/reports.csv` and `/api/export/events.csv` (`?hours=`) download what the backend has right now, straight from a browser.
+- `intervals.csv` marks `NO_DATA` where Render restarted between polls. `hourly.csv`'s `taken_pct` counts OCCUPIED and AWAY as taken.
+- `data/` is git-ignored.
 
 ## Status (2026-10-30)
 

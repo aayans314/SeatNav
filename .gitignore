@@ -23,3 +23,5 @@ Thumbs.db
 # vscode
 .vscode
 .claude
+# Collected sensor data (tools/collector.py)
+data/

@@ -2,12 +2,15 @@
 SeatNav backend
 
   1. Receives reports straight from the seat sensors (POST /api/report)
-  2. Saves every state change in a SQLite database (seatnav.db)
+  2. Saves every state change, and every raw report, in a SQLite database (seatnav.db)
   3. Serves the data to the app:
        GET  /api/seats                       all seats + summary (free / occupied / away / offline)
        GET  /api/seats/{seat_id}             one seat
        GET  /api/seats/{seat_id}/history     state changes, default last 24 h (?hours=...)
        GET  /api/seats/{seat_id}/usage       % of time free / occupied / away (?hours=...)
+       GET  /api/log                         raw reports + events after given ids (for tools/collector.py)
+       GET  /api/export/reports.csv          raw reports as CSV, default last 72 h (?hours=...)
+       GET  /api/export/events.csv           state changes + online/offline as CSV (?hours=...)
        GET  /api/health                      quick "is the server up" check
        WS   /ws                              live updates pushed the moment a seat changes
        GET  /                                live 3D floor map (static/index.html; add ?demo for made-up data)
@@ -25,6 +28,8 @@ Settings (environment variables):
 """
 
 import asyncio
+import csv
+import io
 import os
 import secrets
 import time
@@ -33,7 +38,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -121,8 +126,13 @@ async def report(r: Report, x_device_key: str | None = Header(default=None)):
         raise HTTPException(422, f"state must be one of {', '.join(VALID_STATES)}")
 
     now = time.time()
+    data = r.model_dump()
     store.handle_status(r.seat, "online", now)          # logs 'online' if it was offline or new
-    seat, changed = store.handle_state(r.seat, r.model_dump(), now)
+    seat, changed = store.handle_state(r.seat, data, now)
+    try:
+        store.log_report(r.seat, data, now)              # raw copy for analysis; never blocks the sensor
+    except Exception as e:
+        print(f"[warning] could not save raw report from {r.seat}: {e!r}")
 
     if changed:
         print(f"[seat] {r.seat}: {seat['display_state']} ({r.reason})")
@@ -169,6 +179,56 @@ def seat_history(seat_id: str, hours: float = Query(24, gt=0, le=24 * 90)):
 def seat_usage(seat_id: str, hours: float = Query(24, gt=0, le=24 * 90)):
     now = time.time()
     return store.get_usage(seat_id, now - hours * 3600, now)
+
+
+# ---------- data collection (for graphs) ----------
+
+@app.get("/api/log")
+async def data_log(
+    reports_after: int = Query(0, ge=0),
+    events_after: int = Query(0, ge=0),
+    limit: int = Query(5000, ge=1, le=20000),
+):
+    """Every raw report and event with an id above the given ones, oldest first.
+    db_id changes whenever the database is new (Render wipes its disk on restart);
+    a collector should then start again from 0. Everything that happened up to
+    server_time is included once both *_more flags are false.
+    async on purpose: it runs on the same thread as /api/report, so server_time
+    can't race a report that is halfway through being saved."""
+    now = time.time()
+    reports, events = store.get_log(reports_after, events_after, limit)
+    return {
+        "db_id": store.db_id,
+        "db_created": store.db_created,
+        "server_time": now,
+        "reports": reports,
+        "events": events,
+        "reports_more": len(reports) == limit,
+        "events_more": len(events) == limit,
+    }
+
+
+def _csv_response(table: str, hours: float):
+    columns, rows = store.rows_since(table, time.time() - hours * 3600)
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(columns)
+    writer.writerows(rows)
+    return Response(
+        out.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="seatnav-{table}.csv"'},
+    )
+
+
+@app.get("/api/export/reports.csv")
+def export_reports(hours: float = Query(72, gt=0, le=24 * 90)):
+    return _csv_response("reports", hours)
+
+
+@app.get("/api/export/events.csv")
+def export_events(hours: float = Query(72, gt=0, le=24 * 90)):
+    return _csv_response("events", hours)
 
 
 @app.websocket("/ws")
