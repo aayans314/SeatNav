@@ -1,0 +1,108 @@
+SEATNAV DATA COLLECTION
+=======================
+
+STATUS: FINISHED. Collected from Saturday Nov 7, about 1 PM, to Thursday Nov 12,
+8:17 PM, 2026, when the sensors were taken down. Charts and numbers are in
+docs\pitch\ (made by: python tools\pitch_charts.py).
+
+The steps below are for running another collection.
+
+
+HOW IT WORKS
+------------
+  sensors --(every 30 s)--> Render server (seatnav.onrender.com)
+                                  ^
+  this laptop --(every 20 s: "anything new?")--+
+       saves it into data\collected.db
+
+Render never sends anything to the laptop; the laptop pulls the data.
+Render wipes its own copy whenever it restarts, so the laptop's copy
+in data\collected.db is the one that counts.
+
+
+IS IT WORKING?
+--------------
+In PowerShell, in the seatnav-backend folder:
+
+    python tools\collector.py status
+
+"Last successful poll" should say a few seconds ago.
+The log is in data\collected.log.
+
+
+WHAT TO DO WHEN...
+------------------
+Wi-Fi drops, or the laptop sleeps:
+    Nothing. It retries every 20 s and catches up on everything
+    it missed once it's back online.
+
+The laptop restarts, shuts down, runs out of battery, or you sign out:
+    Double-click  tools\start-collector.cmd  (in File Explorer).
+    It carries on from where it stopped and pulls everything Render
+    received in the meantime. Running it twice is harmless: the second
+    copy sees the first one and exits.
+
+The only way to lose data:
+    Render restarts while the laptop isn't pulling. Whatever Render got
+    between the laptop's last pull and that restart is gone. In the
+    export that gap shows up as NO_DATA, not as a free or taken seat.
+    So keep the laptop plugged in, lid open, and online as much as you can.
+
+
+DON'T
+-----
+- Don't push to GitHub until the run is over. Every push makes Render
+  redeploy, which restarts it and wipes its copy.
+- Don't close or delete data\collected.db while it's running.
+
+
+WHEN YOU'RE DONE (Wednesday)
+----------------------------
+1. Export to CSV:
+
+       python tools\collector.py export
+
+   This writes to data\export\:
+     intervals.csv  one row per stretch of one state per seat
+                    (seat, state, start, end, duration); use for timelines
+     hourly.csv     seconds in each state per seat per hour, plus taken_pct
+                    = (OCCUPIED + AWAY) / known time; use for "% busy by hour"
+     events.csv     every state change and online/offline event
+     reports.csv    every raw report (heartbeats too): near, radar distances,
+                    Wi-Fi signal (rssi), reason
+
+   You can run export any time, even while it's still collecting.
+
+2. Stop the collector: Task Manager -> Details -> pythonw3.11.exe ->
+   End task.
+
+
+NOTES FOR THE GRAPHS
+--------------------
+- The sensors run the TEST timings: an AWAY seat turns FREE after 60 s
+  (not 15 min), and a visit shorter than 20 s goes straight back to FREE.
+- Seats 02 and 04 flip between OCCUPIED and AWAY every few seconds for
+  long stretches (radar noise near the 100 cm edge). Count OCCUPIED +
+  AWAY together as "taken"; taken_pct in hourly.csv already does this.
+- Times in the CSVs are laptop local time (Eastern); the ts columns
+  are Unix timestamps.
+- test-01 is the test bench sensor; leave it out of the graphs.
+
+
+BACKUP: STRAIGHT FROM THE SERVER
+--------------------------------
+Open these in a browser to download what Render has right now (only
+since its last restart):
+    https://seatnav.onrender.com/api/export/events.csv?hours=72
+    https://seatnav.onrender.com/api/export/reports.csv?hours=72
+
+
+FILES
+-----
+tools\collector.py          the collector (run / status / export)
+tools\start-collector.cmd   double-click to start it in the background
+data\collected.db           the collected data (SQLite)
+data\collected.log          what the collector has been doing
+data\pre-deploy\            raw copy of the server's history saved on Nov 9
+docs\state-diagram.png      the sensor state diagram (.svg is editable)
+tools\pitch_charts.py       turns data\export\ into the charts in docs\pitch\

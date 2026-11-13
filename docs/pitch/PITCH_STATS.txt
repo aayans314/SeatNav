@@ -1,0 +1,42 @@
+SEATNAV PILOT: NUMBERS FOR THE PITCH
+====================================
+Made by tools/pitch_charts.py from data/export/ (Feldberg Library, 6 sensors).
+
+HEADLINE NUMBERS
+- Live data: 5.3 days, Sat Nov 7 12:57 PM to Thu Nov 12 8:17 PM (when the sensors were taken down).
+- Sensor check-ins collected: 63,618 (every 30 s per sensor, since Mon Nov 9; earlier days have state changes only).
+- Uptime: 96.8% overall; 98.9% without seat 03's 16.4 h offline stretch (Sun Nov 8 1:29 PM – Mon Nov 9 5:52 AM).
+- Busiest weekday hour: 1 PM–2 PM, seats taken 54% of the time.
+- At that hour, all 4 tracked seats were full only 12% of the time,
+  so a free seat existed 88% of the time (average 2.2 of 4 seats taken; 239 minutes measured).
+- Busiest hour on each weekday: Mon 2 PM, Tue 1 PM, Wed 1 PM, Thu 1 PM.
+- 71% of weekday seat use fell between 11 AM and 6 PM.
+- Share of monitored time each seat was taken:
+    Seat 01:  23.6%  (29.1 h of 123.4 h)
+    Seat 02:  30.7%  (38.7 h of 126.0 h)   <- unreliable: some false detections at night
+    Seat 03:  14.6%  (16.0 h of 109.5 h)
+    Seat 04:  81.1%  (101.9 h of 125.7 h)   <- unreliable: false detections every night
+    Seat 05:  12.8%  (16.1 h of 126.0 h)
+    Seat 06:   5.6%  (7.0 h of 125.5 h)
+- Most vs least used reliable seat: Seat 01 24% vs Seat 06 6% (4.2x), in the same block of six carrels.
+- Night check (2–6 AM, share of check-ins with someone 'near'): Seat 01 0%, Seat 02 10%, Seat 03 0%, Seat 04 46%, Seat 05 0%, Seat 06 0%.
+  Seat 04's night readings (1125 check-ins) are a still object at 30 cm (10th-90th percentile 30-30 cm).
+
+TALKING POINTS
+- It works in a real library: six sensors ran for five days with ~97% uptime.
+- The data shows when the library is busy (weekday early afternoons) and which
+  seats students prefer. That's the seat-level planning data libraries can't get today.
+- Even at the busiest hour there was usually a free seat. Students just can't see
+  it, which is the problem the live map solves.
+- We caught a sensor problem from the data itself (seat 04 'taken' every night).
+  That's how SeatNav would monitor its own sensors at scale.
+
+CAVEATS (say them if asked)
+- Small pilot: 6 seats, 5 days, one library, one block of carrels.
+- Usage charts use the 4 reliable seats (01, 03, 05, 06); seats 02 and 04 are left out.
+- The sensors ran the TEST timings (a seat counts as free 60 s after someone
+  leaves; the real setting would hold it for 15 min). Hours 'taken' would be a little higher
+  with the real timings.
+- Seat 01 shows early-morning activity on Mon (about 3–10 AM, flickering until ~5:30)
+  and Tue (about 6–7 AM). It could be a person, cleaning staff or noise; the data can't tell.
+- 'Taken' = occupied or briefly stepped away (OCCUPIED + AWAY).

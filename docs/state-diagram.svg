@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3b3f3d"/>
+    </marker>
+    <style>
+      .edge { fill: none; stroke: #3b3f3d; stroke-width: 2.6; marker-end: url(#arrow); }
+      .lbl  { font-size: 20px; fill: #1d201f; text-anchor: middle; paint-order: stroke; stroke: #fff; stroke-width: 7px; stroke-linejoin: round; }
+      .lbl b, .b { font-weight: 700; }
+      .sub  { font-size: 16px; fill: #5b625f; text-anchor: middle; }
+      .name { font-size: 32px; font-weight: 700; text-anchor: middle; letter-spacing: 1px; }
+      .desc { font-size: 17px; fill: #333; text-anchor: middle; }
+      .ptitle { font-size: 19px; font-weight: 700; fill: #1d201f; }
+      .ptext  { font-size: 16px; fill: #333; }
+      .mono   { font-family: Consolas, Menlo, monospace; font-size: 15px; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1040" fill="#ffffff"/>
+
+  <!-- title -->
+  <text x="40" y="58" font-size="34" font-weight="700" fill="#1d201f">SeatNav seat sensor: state diagram</text>
+  <text x="40" y="92" font-size="18" fill="#5b625f">Logic in seatnav_http.ino (ESP32 + LD2410 radar). Timings on the arrows are the ones currently flashed (test values); the real Feldberg values are in the table.</text>
+
+  <g transform="translate(0,40)">
+  <!-- initial state -->
+  <circle cx="44" cy="330" r="12" fill="#1d201f"/>
+  <path class="edge" d="M 58 330 L 126 330"/>
+  <text class="lbl" x="24" y="282" style="font-size:17px;text-anchor:start">power on</text>
+  <text class="sub" x="24" y="304" style="text-anchor:start">sends "boot"</text>
+
+  <!-- states -->
+  <g>
+    <rect x="130" y="270" width="260" height="120" rx="22" fill="#e6f5ed" stroke="#16a35f" stroke-width="4"/>
+    <text class="name" x="260" y="322" fill="#16a35f">FREE</text>
+    <text class="desc" x="260" y="355">seat is free</text>
+  </g>
+  <g>
+    <rect x="670" y="270" width="260" height="120" rx="22" fill="#f9e6e5" stroke="#c8322b" stroke-width="4"/>
+    <text class="name" x="800" y="322" fill="#c8322b">OCCUPIED</text>
+    <text class="desc" x="800" y="355">someone is sitting here</text>
+  </g>
+  <g>
+    <rect x="1210" y="270" width="260" height="120" rx="22" fill="#fcf3e0" stroke="#e9a514" stroke-width="4"/>
+    <text class="name" x="1340" y="322" fill="#b97f00">AWAY</text>
+    <text class="desc" x="1340" y="355">stepped away, seat held</text>
+  </g>
+
+  <!-- FREE -> OCCUPIED -->
+  <path class="edge" d="M 340 266 C 420 160, 640 160, 718 264"/>
+  <text class="lbl" x="530" y="150">someone near for <tspan class="b">2 s</tspan></text>
+  <text class="sub" x="530" y="128">CONFIRM_MS</text>
+
+  <!-- OCCUPIED -> AWAY -->
+  <path class="edge" d="M 880 266 C 960 160, 1180 160, 1258 264"/>
+  <text class="sub" x="1070" y="104">AWAY_DELAY_MS, SHORT_VISIT_MS</text>
+  <text class="lbl" x="1070" y="128">nobody near for <tspan class="b">10 s</tspan></text>
+  <text class="lbl" x="1070" y="153">and sat at least <tspan class="b">20 s</tspan></text>
+
+  <!-- OCCUPIED -> FREE (short visit) -->
+  <path class="edge" d="M 720 394 C 640 500, 420 500, 342 396"/>
+  <text class="lbl" x="530" y="520">nobody near for <tspan class="b">10 s</tspan></text>
+  <text class="lbl" x="530" y="545">and sat less than <tspan class="b">20 s</tspan></text>
+  <text class="sub" x="530" y="568">short visit: no need to hold the seat</text>
+
+  <!-- AWAY -> OCCUPIED -->
+  <path class="edge" d="M 1260 394 C 1180 500, 960 500, 882 396"/>
+  <text class="lbl" x="1070" y="520">someone near for <tspan class="b">2 s</tspan></text>
+  <text class="sub" x="1070" y="543">they came back (the original start time is kept)</text>
+
+  <!-- AWAY -> FREE -->
+  <path class="edge" d="M 1340 394 C 1340 760, 260 760, 260 396"/>
+  <text class="lbl" x="800" y="704">still AWAY after <tspan class="b">60 s</tspan></text>
+  <text class="sub" x="800" y="727">AWAY_TIMEOUT_MS, counted from entering AWAY</text>
+
+  </g>
+
+  <!-- panels -->
+  <g transform="translate(40,810)">
+    <rect width="360" height="200" rx="14" fill="#f4f5f4" stroke="#d5d9d7"/>
+    <text class="ptitle" x="20" y="34">What "near" means</text>
+    <text class="ptext" x="20" y="64">The radar sees a moving or a still</text>
+    <text class="ptext" x="20" y="86">target within <tspan class="b">100 cm</tspan> (SEAT_RANGE_CM).</text>
+    <text class="ptext" x="20" y="116">"For 2 s" / "for 10 s" means without</text>
+    <text class="ptext" x="20" y="138">a break: the timer restarts each time</text>
+    <text class="ptext" x="20" y="160">near/nobody-near flips. "Sat" counts</text>
+    <text class="ptext" x="20" y="182">from when the seat first became OCCUPIED.</text>
+  </g>
+
+  <g transform="translate(420,810)">
+    <rect width="400" height="200" rx="14" fill="#f4f5f4" stroke="#d5d9d7"/>
+    <text class="ptitle" x="20" y="34">Timings</text>
+    <text class="ptext b" x="20" y="64">constant</text>
+    <text class="ptext b" x="245" y="64">flashed</text>
+    <text class="ptext b" x="325" y="64">real</text>
+    <line x1="20" y1="74" x2="380" y2="74" stroke="#c9cecb"/>
+    <text class="mono" x="20" y="98">CONFIRM_MS</text>      <text class="ptext" x="245" y="98">2 s</text>   <text class="ptext" x="325" y="98">3 s</text>
+    <text class="mono" x="20" y="124">AWAY_DELAY_MS</text>   <text class="ptext" x="245" y="124">10 s</text>  <text class="ptext" x="325" y="124">15 s</text>
+    <text class="mono" x="20" y="150">SHORT_VISIT_MS</text>  <text class="ptext" x="245" y="150">20 s</text>  <text class="ptext" x="325" y="150">2 min</text>
+    <text class="mono" x="20" y="176">AWAY_TIMEOUT_MS</text> <text class="ptext" x="245" y="176">60 s</text>  <text class="ptext" x="325" y="176">15 min</text>
+  </g>
+
+  <g transform="translate(840,810)">
+    <rect width="370" height="200" rx="14" fill="#f4f5f4" stroke="#d5d9d7"/>
+    <text class="ptitle" x="20" y="34">Reports to the server</text>
+    <text class="ptext" x="20" y="62">POST /api/report with state, near,</text>
+    <text class="ptext" x="20" y="84">radar distances, Wi-Fi signal, reason:</text>
+    <text class="ptext" x="20" y="114"><tspan class="b">boot</tspan>  once Wi-Fi connects</text>
+    <text class="ptext" x="20" y="138"><tspan class="b">change</tspan>  on every arrow above</text>
+    <text class="ptext" x="20" y="162"><tspan class="b">heartbeat</tspan>  every 30 s, same state</text>
+    <text class="ptext" x="20" y="186">A failed send is retried every 5 s.</text>
+  </g>
+
+  <g transform="translate(1230,810)">
+    <rect width="330" height="200" rx="14" fill="#ffffff" stroke="#8a918d" stroke-width="2" stroke-dasharray="8 6"/>
+    <text class="ptitle" x="20" y="34" fill="#5b625f">Server only: OFFLINE</text>
+    <text class="ptext" x="20" y="64">Not part of the sensor. If no</text>
+    <text class="ptext" x="20" y="86">report arrives for <tspan class="b">90 s</tspan> (3 missed</text>
+    <text class="ptext" x="20" y="108">heartbeats), the map shows the seat</text>
+    <text class="ptext" x="20" y="130">as OFFLINE. The next report puts it</text>
+    <text class="ptext" x="20" y="152">back to the state the sensor sends.</text>
+  </g>
+</svg>
