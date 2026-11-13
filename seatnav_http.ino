@@ -39,21 +39,14 @@
 #include <MyLD2410.h>
 #include "secrets.h"
 
-// ---------- Wi-Fi (2.4 GHz only) ----------
-// "Dartmouth Public" is open: leave the password empty.
-// For a phone hotspot, put its name and password here instead.
 const char* WIFI_SSID     = "Dartmouth Public";
 const char* WIFI_PASSWORD = "";
 
-// ---------- Backend ----------
-// Testing with laptop + ESP32 on the same phone hotspot:
-//   "http://<your laptop's IP on the hotspot>:8000/api/report"
-// After deploying:
-//   "https://<your-app>.onrender.com/api/report"
-const char* REPORT_URL = "https://seatnav.onrender.com/api/report";
-const char* DEVICE_KEY = DEVICE_KEYS;   // must match DEVICE_KEYS on the server
 
-#define SEAT_ID "seat-01"                        // give every sensor its own ID (letters, numbers, - and _)
+const char* REPORT_URL = "https://seatnav.onrender.com/api/report";
+const char* DEVICE_KEY = SECRET_KEY;   // NO LEAK
+
+#define SEAT_ID "seat-04"                        
 
 #define HEARTBEAT_MS 30000UL   // re-send the current state every 30 s
 #define RETRY_MS      5000UL   // after a failed send, try again this often
@@ -63,7 +56,7 @@ const char* DEVICE_KEY = DEVICE_KEYS;   // must match DEVICE_KEYS on the server
 #define TX_PIN 17
 
 // ---------- detection ----------
-#define SEAT_RANGE_CM 50       // anyone closer than this is "at the seat"
+#define SEAT_RANGE_CM 100       // anyone closer than this is "at the seat"
 
 // ---------- TEST timings ----------
 #define CONFIRM_MS        2000UL   // must be near this long before OCCUPIED (ignores people walking past)
