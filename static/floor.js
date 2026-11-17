@@ -740,9 +740,13 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     const { min, max } = area(comp.box);
     const group = new THREE.Group();
     group.position.set((min.x + max.x) / 2, 0, (min.z + max.z) / 2);
+    // "facing" turns the whole compartment: it is the way the first seat in each row faces
+    // (east unless set; the test bench faces north, towards its whiteboard)
+    group.rotation.y = ARROW_ANGLE[comp.facing] ?? 0;
     scene.add(group);
 
-    const length = max.z - min.z;          // the spine runs north-south
+    const sideways = Math.abs(Math.sin(group.rotation.y)) > 0.5;
+    const length = sideways ? max.x - min.x : max.z - min.z;   // the spine runs north-south before turning
     const rowW = length / comp.seats.length;
     const parts = new Batch();
     const { fabric, wood, metal, dark } = mat;   // compartments without sensors look the same, minus lights and pins
@@ -769,12 +773,14 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
     }));
     if (!ghost) {
       // a brand-coloured outline on the floor marks the live compartment
+      // (only round the sides that have seats)
       const hw = PART_DEPTH + 0.75;
       const hl = length / 2 + 0.25;
-      for (const s of [-1, 1]) {
-        parts.box(mat.arrow, 2 * hw, 0.01, 0.06, 0, 0.012, s * hl);
-        parts.box(mat.arrow, 0.06, 0.01, 2 * hl, s * hw, 0.012, 0);
-      }
+      const used = (column) => comp.seats.some((row) => row[column]);
+      const x0 = used(0) ? -hw : -0.25;
+      const x1 = used(1) ? hw : 0.25;
+      for (const s of [-1, 1]) parts.box(mat.arrow, x1 - x0, 0.01, 0.06, (x0 + x1) / 2, 0.012, s * hl);
+      for (const x of [x0, x1]) parts.box(mat.arrow, 0.06, 0.01, 2 * hl, x, 0.012, 0);
     }
     parts.addTo(group);
   }
@@ -1003,7 +1009,7 @@ export function createFloor(container, layout, { onSelect = () => {}, decoratePi
 
   function buildCarrel(group, seatId, side, z, rowW, ghost) {
     const c = { seatId, side, ghost, state: null, pull: 0, turn: 0, target: [0, 0] };
-    c.worldPos = group.position.clone().add(new THREE.Vector3(side * 0.6, 0, z));
+    c.worldPos = new THREE.Vector3(side * 0.6, 0, z).applyAxisAngle(new THREE.Vector3(0, 1, 0), group.rotation.y).add(group.position);
 
     c.chair = new THREE.Group();
     const seat = new THREE.Mesh(chair.seat, mat.seat);
