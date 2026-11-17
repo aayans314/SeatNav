@@ -97,62 +97,245 @@ function limb(radius, a, b) {
   return g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
 }
 
-function faceTexture(skin) {
-  // wraps round the head; the middle of the canvas becomes the face
+// a cylinder from a (radius r1) to b (radius r2); pair with ball() at the joints
+function taper(r1, r2, a, b) {
+  const dir = b.clone().sub(a);
+  const g = new THREE.CylinderGeometry(r2, r1, Math.max(dir.length(), 0.001), 14);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), dir.normalize()));
+  return g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+}
+
+// an ellipsoid with radii (rx, ry, rz) centred on p
+function ball(p, rx, ry = rx, rz = rx) {
+  return new THREE.SphereGeometry(1, 16, 12).scale(rx, ry, rz).translate(p.x, p.y, p.z);
+}
+
+const css = (hex) => '#' + hex.toString(16).padStart(6, '0');
+
+function faceTexture({ skin, brow, iris, lips, woman }) {
+  // wraps round the head: the middle of the canvas is the front of the face and the
+  // middle row is eye level. 1 cm is about 10 px across and 7 px down.
   const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 128;
+  c.width = 512;
+  c.height = 256;
   const g = c.getContext('2d');
-  g.fillStyle = skin;
-  g.fillRect(0, 0, 256, 128);
-  g.fillStyle = '#2b2220';
-  for (const x of [119, 137]) {
+  const ellipse = (x, y, rx, ry, start = 0, end = Math.PI * 2) => {
     g.beginPath();
-    g.ellipse(x, 56, 3.5, 5, 0, 0, Math.PI * 2);
-    g.fill();
-  }
-  g.strokeStyle = '#7a2e2a';
-  g.lineWidth = 3;
+    g.ellipse(x, y, rx, ry, 0, start, end);
+  };
+  g.fillStyle = skin;
+  g.fillRect(0, 0, 512, 256);
   g.lineCap = 'round';
+  for (const s of [-1, 1]) {
+    const cheek = g.createRadialGradient(256 + s * 46, 158, 2, 256 + s * 46, 158, 30);
+    cheek.addColorStop(0, `rgba(190, 80, 70, ${woman ? 0.2 : 0.12})`);
+    cheek.addColorStop(1, 'rgba(190, 80, 70, 0)');
+    g.fillStyle = cheek;
+    g.fillRect(200 + s * 46, 120, 112, 80);
+
+    const x = 256 + s * 32;
+    const y = 126;
+    g.fillStyle = 'rgba(70, 40, 30, 0.18)';              // shadow of the brow over the eye
+    ellipse(x, y - 2, 15, 7);
+    g.fill();
+    g.save();
+    g.fillStyle = '#f2ece4';
+    ellipse(x, y, 11.5, 4);
+    g.fill();
+    g.clip();
+    g.fillStyle = iris;
+    ellipse(x, y + 0.5, 5.5, 4.2);
+    g.fill();
+    g.fillStyle = '#0d0d0d';
+    ellipse(x, y + 0.5, 2.6, 2);
+    g.fill();
+    g.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ellipse(x - 1.5, y - 1, 1.1, 0.9);
+    g.fill();
+    g.restore();
+    g.strokeStyle = '#2a1c18';                            // upper lid and lashes
+    g.lineWidth = woman ? 2.2 : 1.4;
+    ellipse(x, y, 11.5, 4, Math.PI * 1.05, Math.PI * 1.95);
+    g.stroke();
+
+    g.strokeStyle = brow;                                 // eyebrow
+    g.lineWidth = woman ? 2.4 : 3.6;
+    g.beginPath();
+    g.moveTo(256 + s * 18, 115);
+    g.quadraticCurveTo(256 + s * 33, woman ? 104 : 108, 256 + s * 47, 115);
+    g.stroke();
+  }
+  g.strokeStyle = 'rgba(90, 45, 35, 0.35)';               // nostrils, under the nose
+  g.lineWidth = 1.5;
+  for (const s of [-1, 1]) {
+    ellipse(256 + s * 6, 160, 3, 1.4);
+    g.stroke();
+  }
+  g.fillStyle = lips;                                     // lips with a darker line between them
+  ellipse(256, 175, woman ? 16 : 17, woman ? 4.2 : 3.2);
+  g.fill();
+  g.strokeStyle = 'rgba(80, 30, 28, 0.8)';
+  g.lineWidth = 1.4;
   g.beginPath();
-  g.arc(128, 66, 9, 0.2 * Math.PI, 0.8 * Math.PI);   // smile
+  g.moveTo(240, 175);
+  g.quadraticCurveTo(256, 177, 272, 175);
   g.stroke();
   const texture = new THREE.CanvasTexture(c);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
   return texture;
 }
 
-const SKIN = ['#f1c7a3', '#e0ac7e', '#b97f55', '#8a5a3b', '#5e3b26'];
-const SHIRT = [0x3d6fa3, 0xc8553d, 0x4f8a5b, 0xd8a33f, 0x6c5ba3, 0x2f3a46, 0xb04a7a];
-const HAIR = [0x2b1d16, 0x111111, 0x5a3820, 0x8f6236, 0x3a2a22];
+const SKIN = ['#f3d0b3', '#e8b994', '#d29f78', '#b07a52', '#8a5a3b', '#5e3b26'];
+const SHIRT = [0x3d6fa3, 0xc8553d, 0x4f8a5b, 0xd8a33f, 0x6c5ba3, 0x2f3a46, 0xb04a7a, 0xe9e4da, 0x7a8c99];
+const PANTS = [0x2c3442, 0x3b5b86, 0x1f2023, 0x8a7a5c, 0x55606b];
+const SHOES = [0x1d1f22, 0xe8e6e1, 0x5b3d2a, 0x30343a];
+const HAIR = [0x2b1d16, 0x111111, 0x5a3820, 0x8f6236, 0x3a2a22, 0xb08a52, 0x6e2f1c];
+const IRIS = ['#4a2f1d', '#2e1d12', '#5a3a22', '#3d5a6e', '#5b6b3a'];
+
+// torso outlines as [radius, height above the hips] in metres, turned into a solid
+const TORSO = {
+  man: [[0, -0.02], [0.15, -0.02], [0.158, 0.04], [0.15, 0.13], [0.158, 0.22], [0.168, 0.32], [0.172, 0.4], [0.165, 0.45], [0.13, 0.49], [0.07, 0.52], [0.05, 0.53], [0, 0.53]],
+  woman: [[0, -0.02], [0.165, -0.02], [0.172, 0.04], [0.14, 0.14], [0.135, 0.2], [0.15, 0.28], [0.152, 0.34], [0.148, 0.4], [0.14, 0.44], [0.11, 0.475], [0.06, 0.505], [0.042, 0.515], [0, 0.515]],
+};
 
 function makePerson(seed = 0) {
-  const pick = (list, k) => list[(seed * 7 + k * 3) % list.length];
+  // the same seed always gives the same person
+  const rand = (k) => {
+    let x = Math.imul(seed + 1, 0x9e3779b1) ^ Math.imul(k + 1, 0x85ebca6b);
+    x ^= x >>> 15;
+    x = Math.imul(x, 0x2c1b3c6d);
+    x ^= x >>> 12;
+    return (x >>> 0) / 4294967296;
+  };
+  const pick = (list, k) => list[Math.floor(rand(k) * list.length)];
+  const woman = seed % 2 === 1;                           // every other person is a woman
   const skin = pick(SKIN, 1);
+  const hair = pick(HAIR, 3);
   const std = (color, roughness = 0.85) => new THREE.MeshStandardMaterial({ color, roughness });
   const materials = {
     shirt: std(pick(SHIRT, 2)),
-    pants: std(0x2c3442, 0.9),
-    skin: std(skin, 0.7),
-    face: new THREE.MeshStandardMaterial({ map: faceTexture(skin), roughness: 0.7 }),
-    hair: std(pick(HAIR, 3), 0.9),
-    shoes: std(0x1d1f22, 0.6),
+    pants: std(pick(PANTS, 4), 0.9),
+    skin: std(skin, 0.6),
+    face: new THREE.MeshStandardMaterial({ roughness: 0.6, map: faceTexture({
+      skin, woman, brow: css(hair), iris: pick(IRIS, 5),
+      lips: woman ? 'rgba(170, 70, 80, 0.75)' : 'rgba(150, 75, 70, 0.45)',
+    }) }),
+    hair: std(hair, 0.75),
+    shoes: std(pick(SHOES, 6), 0.55),
+    soles: std(0xe6e3dc, 0.8),
   };
-  const parts = { shirt: [], pants: [], skin: [], face: [], hair: [], shoes: [] };
-  parts.shirt.push(limb(0.15, V(0.05, 0.66, 0), V(0, 0.98, 0)), limb(0.07, V(0, 1.04, -0.16), V(0, 1.04, 0.16)));
+  const parts = Object.fromEntries(Object.keys(materials).map((key) => [key, []]));
+
+  // sitting on the chair, leaning a little towards the desk
+  const LEAN = 0.1;
+  const hip = V(0.06, 0.6, 0);
+  parts.shirt.push(new THREE.LatheGeometry(TORSO[woman ? 'woman' : 'man'].map(([r, h]) => new THREE.Vector2(r, h)), 20)
+    .scale(woman ? 0.66 : 0.6, 1, 1).rotateZ(LEAN).translate(hip.x, hip.y, 0));
+  parts.shirt.push(new THREE.TorusGeometry(woman ? 0.044 : 0.052, 0.013, 8, 20).rotateX(Math.PI / 2)
+    .rotateZ(LEAN).translate(0.007, 1.115, 0));          // collar
+  parts.pants.push(ball(V(0.07, 0.6, 0), 0.12, 0.085, woman ? 0.175 : 0.16));
+
+  const sw = woman ? 0.148 : 0.165;                       // half the shoulder width
+  const longSleeves = rand(7) < 0.5;
   for (const s of [-1, 1]) {
-    parts.shirt.push(limb(0.055, V(0, 1.03, s * 0.2), V(-0.1, 0.83, s * 0.22)));        // upper arm
-    parts.shirt.push(limb(0.045, V(-0.1, 0.83, s * 0.22), V(-0.36, 0.8, s * 0.15)));    // forearm
-    parts.skin.push(new THREE.SphereGeometry(0.045, 10, 8).translate(-0.4, 0.8, s * 0.14));
-    parts.pants.push(limb(0.075, V(0.03, 0.57, s * 0.1), V(-0.36, 0.57, s * 0.1)));      // thigh
-    parts.pants.push(limb(0.06, V(-0.38, 0.55, s * 0.1), V(-0.4, 0.1, s * 0.1)));        // shin
-    parts.shoes.push(new THREE.BoxGeometry(0.22, 0.07, 0.1).translate(-0.45, 0.035, s * 0.1));
+    const shoulder = V(0.01, woman ? 1.045 : 1.06, s * sw);
+    const elbow = V(-0.06, 0.8, s * (sw + 0.035));
+    const wrist = V(-0.32, 0.79, s * (sw - 0.03));
+    const hand = V(-0.375, 0.778, s * (sw - 0.045));
+    const [upper, lower, end] = woman ? [0.04, 0.034, 0.024] : [0.048, 0.04, 0.028];
+    parts.shirt.push(ball(shoulder, upper + (longSleeves ? 0.002 : 0.007)));
+    if (longSleeves) {
+      parts.shirt.push(taper(upper, lower, shoulder, elbow), ball(elbow, lower), taper(lower, end + 0.004, elbow, wrist));
+    } else {
+      const hem = shoulder.clone().lerp(elbow, 0.5);
+      parts.shirt.push(taper(upper + 0.007, upper + 0.005, shoulder, hem));
+      parts.skin.push(taper(upper, lower, shoulder, elbow), ball(elbow, lower), taper(lower, end, elbow, wrist));
+    }
+    // hand flat on the desk, thumb on the inside
+    const k = woman ? 0.9 : 1;
+    parts.skin.push(ball(wrist, end), ball(hand, 0.05 * k, 0.016, 0.04 * k));
+    parts.skin.push(limb(0.011 * k, V(-0.34, 0.782, s * (sw - 0.075)), V(-0.385, 0.775, s * (sw - 0.09))));
+
+    const hipJoint = V(0.05, 0.585, s * 0.095);
+    const knee = V(-0.36, 0.57, s * 0.105);
+    const ankle = V(-0.4, 0.11, s * 0.105);
+    parts.pants.push(taper(woman ? 0.088 : 0.085, woman ? 0.055 : 0.058, hipJoint, knee), ball(knee, 0.058));
+    parts.pants.push(taper(0.052, 0.038, knee, ankle), ball(knee.clone().lerp(ankle, 0.3).add(V(0.012, 0, 0)), 0.055, 0.09, 0.052));
+    parts.pants.push(ball(ankle, 0.038));
+    const foot = woman ? 0.24 : 0.27;
+    parts.shoes.push(new RoundedBoxGeometry(foot, 0.075, woman ? 0.09 : 0.1, 2, 0.03).translate(-0.45, 0.05, s * 0.105));
+    parts.soles.push(new THREE.BoxGeometry(foot + 0.01, 0.02, woman ? 0.095 : 0.105).translate(-0.45, 0.01, s * 0.105));
   }
-  parts.skin.push(limb(0.045, V(-0.01, 1.1, 0), V(-0.02, 1.2, 0)));                     // neck
-  parts.face.push(new THREE.SphereGeometry(0.1, 24, 16).rotateY(Math.PI).translate(-0.03, 1.29, 0));
-  parts.hair.push(new THREE.SphereGeometry(0.107, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.4).translate(-0.015, 1.3, 0));
+  parts.skin.push(limb(woman ? 0.043 : 0.05, V(0.005, 1.1, 0), V(-0.02, 1.19, 0)));   // neck
+
+  // the head, modelled round the origin, then tipped forward to look down at the laptop
+  const [rx, ry, rz] = woman ? [0.092, 0.11, 0.076] : [0.097, 0.115, 0.08];
+  const head = { face: [], skin: [], hair: [] };
+  // a unit sphere stretched to the head's size, narrower towards the chin; puff > 1 sits just outside it
+  const toHead = (g, puff = 1) => {
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i);
+      const jaw = y < 0 ? y * y : 0;
+      pos.setXYZ(i, pos.getX(i) * rx * puff * (1 - 0.12 * jaw), y * ry * puff, pos.getZ(i) * rz * puff * (1 - (woman ? 0.3 : 0.22) * jaw));
+    }
+    g.computeVertexNormals();
+    return g;
+  };
+  head.face.push(toHead(new THREE.SphereGeometry(1, 40, 24).rotateY(Math.PI)));
+  head.skin.push(ball(V(-rx + 0.006, -0.018, 0), woman ? 0.013 : 0.015, woman ? 0.022 : 0.025, woman ? 0.01 : 0.012));   // nose
+
+  const style = woman ? pick(['long', 'long', 'ponytail', 'bun'], 8) : pick(['short', 'short', 'full'], 8);
+  // hair: the part of the head above a hairline that is high at the forehead, lower at the
+  // sides and lowest at the nape (heights as a fraction of the head's half-height)
+  const hairShell = (front, side, back, puff) => {
+    const g = new THREE.SphereGeometry(1, 48, 28);
+    const pos = g.attributes.position;
+    const line = (x) => (x < 0 ? side - (front - side) * x : side + (back - side) * x);
+    const above = (i) => pos.getY(i) > line(pos.getX(i));
+    const index = g.index.array;
+    const keep = [];
+    for (let i = 0; i < index.length; i += 3) {
+      if (above(index[i]) || above(index[i + 1]) || above(index[i + 2])) keep.push(index[i], index[i + 1], index[i + 2]);
+    }
+    g.setIndex(keep);
+    // slide the vertices just below the hairline up onto it, so the edge is smooth
+    for (let i = 0; i < pos.count; i++) {
+      let [x, y, z] = [pos.getX(i), pos.getY(i), pos.getZ(i)];
+      for (let n = 0; n < 4 && y < line(x); n++) {
+        y = line(x);
+        const k = Math.sqrt(Math.max(0, 1 - y * y)) / (Math.hypot(x, z) || 1);
+        x *= k;
+        z *= k;
+      }
+      pos.setXYZ(i, x, y, z);
+    }
+    return toHead(g, puff);
+  };
+  if (style === 'short') head.hair.push(hairShell(0.62, 0.3, -0.35, 1.03));
+  if (style === 'full') head.hair.push(hairShell(0.5, 0.12, -0.45, 1.07));
+  if (style === 'long') head.hair.push(hairShell(0.55, -0.15, -0.5, 1.05));
+  if (style === 'ponytail' || style === 'bun') head.hair.push(hairShell(0.6, 0.15, -0.3, 1.03));
+  if (style !== 'long') for (const s of [-1, 1]) head.skin.push(ball(V(0.008, -0.005, s * rz), 0.02, 0.03, 0.01));   // ears
+  if (style === 'bun') head.hair.push(ball(V(rx * 0.85, ry * 0.45, 0), 0.048));
+  if (style === 'ponytail') head.hair.push(ball(V(rx * 0.97, 0.02, 0), 0.028));
+
+  const tipForward = new THREE.Matrix4().makeTranslation(-0.02, 1.18, 0)    // top of the neck
+    .multiply(new THREE.Matrix4().makeRotationZ(0.2))
+    .multiply(new THREE.Matrix4().makeTranslation(-0.01, 0.1, 0));           // neck to the middle of the head
+  for (const [key, list] of Object.entries(head)) parts[key].push(...list.map((g) => g.applyMatrix4(tipForward)));
+
+  // hair that hangs straight down, so it isn't tipped with the head
+  if (style === 'long') {
+    parts.hair.push(ball(V(0.03, 1.17, 0), 0.075, 0.16, 0.105));
+    for (const s of [-1, 1]) parts.hair.push(limb(0.026, V(-0.06, 1.31, s * 0.08), V(-0.02, 1.12, s * 0.095)));
+  }
+  if (style === 'ponytail') parts.hair.push(limb(0.03, V(0.06, 1.28, 0), V(0.09, 1.1, 0)));
+
   const person = new THREE.Group();
   for (const [key, list] of Object.entries(parts)) {
+    if (!list.length) continue;
     const mesh = new THREE.Mesh(merge(list), materials[key]);
     mesh.castShadow = true;
     person.add(mesh);
