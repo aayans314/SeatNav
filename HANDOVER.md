@@ -19,7 +19,7 @@ ESP32 + LD2410 radar --POST /api/report--> FastAPI (main.py, store.py, SQLite) -
   - `floor.js`: the 3D scene, built entirely from a layout file: walls, brick, windows and glass, carpet texture, furniture builders (`BUILD`), carrels, people (`makePerson`), state visuals, camera presets, taps.
   - `places.json`: the place picker list. Only entries with a `layout` can be opened; the others show "Soon". Testing places are never remembered as the default.
   - `layout/feldberg-1.json`: the Feldberg ground floor. Coordinates are pixels of `layout/feldberg-1-plan.png`, at 0.033 m per pixel.
-  - `layout/test-bench.json`: one desk and one sensor (`test-01`) for testing and showcasing. Coordinates are in cm; `"testing": true` turns on the debug wording.
+  - `layout/test-bench.json`: one desk with a seat at each end (`test-01`, `test-02`) for testing and showcasing. Coordinates are in cm; `"testing": true` turns on the debug wording.
   - `cards.html`: the old card dashboard, kept for debugging.
 - **Expo app** (`seatnav-app/`): the earlier native prototype, no longer the target. Expo Go from the App Store stops at SDK 54, and this app is on SDK 57. The reference photos of the floor are in `seatnav-app/assets/*.jfif`.
 

@@ -1,6 +1,6 @@
 {
   "name": "Sensor test bench",
-  "about": "One desk with one sensor (SEAT_ID \"test-01\") for testing and demos. Coordinates are centimetres.",
+  "about": "One desk with a seat at each end (SEAT_IDs \"test-01\" and \"test-02\") for testing and demos. Coordinates are centimetres.",
   "testing": true,
   "metres_per_px": 0.01,
   "away_timeout_min": 1,
@@ -16,10 +16,11 @@
   ],
   "entrances": [],
   "compartments": [
-    { "id": "bench", "box": [190, 160, 310, 240], "panels": false, "seats": [["test-01"]] }
+    { "id": "bench", "box": [190, 160, 310, 240], "panels": false, "seats": [["test-01", "test-02"]] }
   ],
   "seat_names": {
-    "test-01": "Test seat"
+    "test-01": "Test seat",
+    "test-02": "Test seat 2"
   },
   "rugs": [{ "at": [250, 200], "size_m": [2.6, 2.0], "color": "#c9734f" }],
   "furniture": [

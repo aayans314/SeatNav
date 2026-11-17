@@ -25,3 +25,4 @@ Thumbs.db
 .claude
 # Collected sensor data (tools/collector.py)
 data/
+docs/
